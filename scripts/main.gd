@@ -313,7 +313,8 @@ func _next_round() -> void:
 		return
 	campaign_round += 1
 	var layout: String = Field.LAYOUT_ORDER[(campaign_round - 1) % Field.LAYOUT_ORDER.size()]
-	_rebuild_field(layout)
+	if field == null or field.layout_name != layout:
+		_rebuild_field(layout)
 	var last := campaign_round >= CAMPAIGN_ROUNDS
 	for t in 2:
 		var roster: Array = campaign_rosters[t].duplicate(true)
@@ -396,10 +397,17 @@ func _on_round_ended(result: Dictionary) -> void:
 		if hud.commanders[t] == "computer":
 			_ai_pick(t, false)
 	var over: bool = campaign_round >= CAMPAIGN_ROUNDS or (survivors[0] as Array).is_empty() or (survivors[1] as Array).is_empty()
-	var summary := {"round": campaign_round, "rounds": CAMPAIGN_ROUNDS, "field": layout, "wins": campaign_wins.duplicate(),
+	var summary := {"round": campaign_round, "rounds": CAMPAIGN_ROUNDS, "field": layout,
+		"next_field": Field.LAYOUT_ORDER[campaign_round % Field.LAYOUT_ORDER.size()], "wins": campaign_wins.duplicate(),
 		"kills": campaign_kills.duplicate(), "history": campaign_rounds.duplicate(true), "counts": counts,
 		"next_sizes": [survivors[0].size(), survivors[1].size()], "last_next": campaign_round + 1 >= CAMPAIGN_ROUNDS,
 		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result, "ai_picks": _ai_picks.duplicate()}
+	if not over:
+		# the next battlefield goes up now, so it can be surveyed before personalities are chosen
+		var next_layout: String = Field.LAYOUT_ORDER[campaign_round % Field.LAYOUT_ORDER.size()]
+		_rebuild_field(next_layout)
+		if cam != null:
+			cam.refit()
 	if over:
 		var cw := -1
 		if campaign_wins[0] != campaign_wins[1]:

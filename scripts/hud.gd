@@ -59,6 +59,7 @@ func setup(m: MatchManager) -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.theme = _make_theme()
 	add_child(_root)
 
 	var top := VBoxContainer.new()
@@ -143,15 +144,44 @@ func setup(m: MatchManager) -> void:
 	_build_results_overlay()
 
 
+## Buttons that look like buttons: an outline on every state, a filled face when toggled on.
+func _make_theme() -> Theme:
+	var th := Theme.new()
+	var mk := func(bg: Color, border: Color, fg: Color) -> StyleBoxFlat:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = bg
+		sb.border_color = border
+		sb.set_border_width_all(2)
+		sb.set_corner_radius_all(7)
+		sb.content_margin_left = 12
+		sb.content_margin_right = 12
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		return sb
+	th.set_stylebox("normal", "Button", mk.call(Color(0.16, 0.18, 0.22, 0.95), Color(0.75, 0.75, 0.7), Color.WHITE))
+	th.set_stylebox("hover", "Button", mk.call(Color(0.24, 0.27, 0.32, 0.97), Color(0.95, 0.95, 0.9), Color.WHITE))
+	th.set_stylebox("pressed", "Button", mk.call(Color(0.88, 0.86, 0.78), Color(1, 1, 0.95), Color.BLACK))
+	th.set_stylebox("hover_pressed", "Button", mk.call(Color(0.95, 0.93, 0.85), Color(1, 1, 0.95), Color.BLACK))
+	th.set_stylebox("disabled", "Button", mk.call(Color(0.12, 0.13, 0.15, 0.8), Color(0.4, 0.4, 0.4), Color.GRAY))
+	th.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	th.set_color("font_color", "Button", Color(0.95, 0.95, 0.92))
+	th.set_color("font_hover_color", "Button", Color.WHITE)
+	th.set_color("font_pressed_color", "Button", Color(0.1, 0.1, 0.08))
+	th.set_color("font_hover_pressed_color", "Button", Color(0.1, 0.1, 0.08))
+	th.set_color("font_disabled_color", "Button", Color(0.55, 0.55, 0.55))
+	return th
+
+
 func _accent(b: Button) -> void:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.72, 0.5, 0.12)
-	sb.corner_radius_top_left = 6
-	sb.corner_radius_top_right = 6
-	sb.corner_radius_bottom_left = 6
-	sb.corner_radius_bottom_right = 6
+	sb.border_color = Color(1.0, 0.85, 0.5)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(7)
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
 	b.add_theme_stylebox_override("normal", sb)
 	var sb2 := sb.duplicate()
 	sb2.bg_color = Color(0.85, 0.6, 0.18)
@@ -261,6 +291,15 @@ func _build_teams_overlay() -> void:
 	box.add_child(cols)
 	for t in 2:
 		cols.add_child(_build_team_panel(t))
+	_section(box, "The campaign's five fields, in order")
+	for i in Field.LAYOUT_ORDER.size():
+		var n: String = Field.LAYOUT_ORDER[i]
+		var fl := Label.new()
+		fl.text = "%d. %s - %s" % [i + 1, n, Field.LAYOUT_HELP.get(n, "")]
+		fl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		fl.add_theme_font_size_override("font_size", 13)
+		fl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.8))
+		box.add_child(fl)
 	var foot := HFlowContainer.new()
 	box.add_child(foot)
 	var fight := _button("Fight with these companies")
@@ -293,13 +332,26 @@ func _build_teams_overlay() -> void:
 
 
 func _build_team_panel(t: int) -> Control:
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = Vector2(330, 0)
+	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var fsb := StyleBoxFlat.new()
+	fsb.bg_color = MatchManager.TEAM_COLORS[t].darkened(0.75)
+	fsb.bg_color.a = 0.55
+	fsb.border_color = MatchManager.TEAM_COLORS[t].lightened(0.15)
+	fsb.set_border_width_all(2)
+	fsb.set_corner_radius_all(8)
+	fsb.content_margin_left = 8
+	fsb.content_margin_right = 8
+	fsb.content_margin_top = 6
+	fsb.content_margin_bottom = 8
+	frame.add_theme_stylebox_override("panel", fsb)
 	var panel := VBoxContainer.new()
-	panel.custom_minimum_size = Vector2(330, 0)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	frame.add_child(panel)
 	var name_l := Label.new()
 	name_l.text = "%s company" % MatchManager.TEAM_NAMES[t]
 	name_l.add_theme_font_size_override("font_size", 18)
-	name_l.add_theme_color_override("font_color", MatchManager.TEAM_COLORS[t].lightened(0.35))
+	name_l.add_theme_color_override("font_color", MatchManager.TEAM_COLORS[t].lightened(0.45))
 	panel.add_child(name_l)
 
 	# size
@@ -377,7 +429,7 @@ func _build_team_panel(t: int) -> Control:
 		panel.add_child(_slider_row(t, tr, Personality.TRAIT_HELP[tr], false))
 	help_labels[t] = {"type": thelp, "persona": phelp}
 	_refresh_sliders(t)
-	return panel
+	return frame
 
 
 ## A row of toggle chips, one per preset: a tap picks it, the chosen one stays lit.
@@ -674,7 +726,12 @@ func batch_progress(i: int, n: int) -> void:
 
 
 func set_round(r: int, total: int, layout: String, sizes: Array) -> void:
+	var later := PackedStringArray()
+	for i in range(r, total):
+		later.append(Field.LAYOUT_ORDER[i % Field.LAYOUT_ORDER.size()])
 	_round_text = "Round %d of %d - %s · Red %d men, Blue %d men" % [r, total, layout, sizes[0], sizes[1]]
+	if later.size() > 0:
+		_round_text += " · then " + ", ".join(later)
 	round_label.text = _round_text
 	round_label.visible = true
 
@@ -760,7 +817,13 @@ func show_round(sm: Dictionary) -> void:
 	_stat_row(g2, "Hit rate", ["%d%%" % int(float(st["hits"][0]) / maxf(float(st["shots"][0]), 1.0) * 100.0), "%d%%" % int(float(st["hits"][1]) / maxf(float(st["shots"][1]), 1.0) * 100.0)])
 	_stat_row(g2, "Killed by ball / bayonet", ["%d / %d" % [st["kills"][0][0], st["kills"][0][1]], "%d / %d" % [st["kills"][1][0], st["kills"][1][1]]])
 	if not over:
-		_section(results_box, "Next round")
+		_section(results_box, "Next round: %s" % sm.get("next_field", ""))
+		var fl := Label.new()
+		fl.text = "%s  (It is on the map now - close this panel and look it over before choosing personalities.)" % Field.LAYOUT_HELP.get(sm.get("next_field", ""), "")
+		fl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		fl.add_theme_font_size_override("font_size", 13)
+		fl.add_theme_color_override("font_color", Color(0.85, 0.85, 0.8))
+		results_box.add_child(fl)
 		var g3 := _stat_grid()
 		var ns: Array = sm["next_sizes"]
 		var ts: Array = sm["team_sizes"]

@@ -59,6 +59,13 @@ const LAYOUTS := {
 	],
 }
 const LAYOUT_ORDER: Array[String] = ["Open Plain", "Walled Farm", "Woodland", "Village", "Sunken Road"]
+const LAYOUT_HELP := {
+	"Open Plain": "Two boulders, a fence and two trees. Nowhere to hide: volleys and nerve decide it.",
+	"Walled Farm": "Stone walls and fences across both halves, a cottage in the middle. Cover for whoever gets to it first.",
+	"Woodland": "Trees everywhere and a few boulders. Lines break up; skirmishers and the bayonet do well.",
+	"Village": "Six houses and walls. Short lines of sight, fighting from doorways and corners.",
+	"Sunken Road": "Long walls either side of a road across the middle. Whoever holds the road fires from cover.",
+}
 
 var layout_name := "Walled Farm"
 
