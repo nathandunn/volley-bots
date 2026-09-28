@@ -92,12 +92,24 @@ choose** — the distance is solved every frame from the field's corners — so 
 you do is pick your vantage, not hunt for the edges. Drag to turn and tilt, wheel or pinch to
 zoom; *Fit view* puts the auto-fit back.
 
+## Two modes
+
+**Simulation** — one battle, or *Sim ×10* for the numbers (the status line counts "Sim 3 of 10").
+
+**Campaign** — five rounds on five fields (Open Plain, Walled Farm, Woodland, Village, Sunken
+Road). A man who stands or runs survives to the next round with his name and his kills (`*n`
+after his name is the rounds he has survived); the dead are gone. Rounds 1–4 are filled back to
+full strength with recruits; the last round is fought with the remainder only. Between rounds
+you may change personalities; **types lock when the campaign starts**. Most rounds won takes
+the campaign (kills break a tie). If a side has nobody left the campaign ends there.
+
 ## Running it
 
 - Browser: `?size=N` (1–20, asked on first load), `?red=Shock&blue=Regulars`,
   `?redtype=Marksman&bluetype=Grenadier`.
 - Headless batch: `godot --headless --path . -- --sim=20 --red=Regulars --blue=Skirmishers
   --seed=1 --cap=400` prints a battle a line and a `SUMMARY {...}` JSON.
+- Headless through the HUD (checks the panels build): `-- --ui --batch=3` or `-- --ui --campaign`.
 - Build: `./build.sh` (Godot 4.7.2 + web templates) writes `dist/`, boots the pack headless
   to prove it, gzips the big three. `Dockerfile` + `nginx.conf` + `headers.caddy` are the
   same shape as Legion Bots.

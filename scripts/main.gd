@@ -14,6 +14,16 @@ var batch_results: Array[Dictionary] = []
 var _restart_timer := -1.0
 var _base_seed := -1
 
+# --- campaign: N rounds on different fields; the men who stand or run carry over
+const CAMPAIGN_ROUNDS := 5
+var campaign_active := false
+var campaign_round := 0            # 1-based; 0 = not started
+var campaign_wins := [0, 0]
+var campaign_kills := [0, 0]
+var campaign_rounds: Array[Dictionary] = []   # one summary per round fought
+var campaign_rosters: Array = [[], []]        # survivors carried into the next round
+var _pending_campaign_result: Dictionary = {}
+
 
 func _ready() -> void:
 	field = Field.new()
@@ -62,13 +72,34 @@ func _ready() -> void:
 	hud = Hud.new()
 	add_child(hud)
 	hud.setup(manager)
-	hud.new_match_requested.connect(func(): batch_left = 0; batch_results.clear(); _start_next())
+	hud.new_match_requested.connect(func():
+		batch_left = 0
+		batch_results.clear()
+		if campaign_active:
+			_abandon_campaign()
+		else:
+			_start_next())
 	hud.batch_requested.connect(_run_batch)
+	hud.campaign_requested.connect(_start_campaign)
+	hud.next_round_requested.connect(_next_round)
+	hud.campaign_abandoned.connect(_abandon_campaign)
 	hud.speed_changed.connect(set_sim_speed)
 	hud.pause_toggled.connect(func(p: bool): get_tree().paused = p)
 	hud.fit_requested.connect(func(): cam.refit())
 	hud.process_mode = Node.PROCESS_MODE_ALWAYS
 	cam.process_mode = Node.PROCESS_MODE_ALWAYS
+	if DisplayServer.get_name() == "headless":
+		# --ui on a headless server: the HUD exists but nobody watches; run it fast and capped
+		manager.time_limit = float(args.get("cap", "400"))
+		set_sim_speed(20.0)
+	if args.has("campaign"):
+		# --ui --campaign: a whole campaign, headless, rounds chained automatically
+		_start_campaign()
+		return
+	if args.has("batch"):
+		# --ui --batch=N: the Sim button's path, HUD and all, for a headless check of the panel
+		_run_batch(maxi(int(args["batch"]), 1))
+		return
 	_start_next()
 
 
@@ -136,11 +167,14 @@ func _start_next() -> void:
 
 
 func _run_batch(n: int) -> void:
+	if campaign_active:
+		_abandon_campaign()
 	batch_left = n
 	batch_results.clear()
 	set_sim_speed(8.0)
 	if hud != null:
 		hud._set_speed(4.0)
+		hud.batch_progress(1, n)
 	_start_next()
 
 
@@ -159,7 +193,7 @@ func _on_match_ended(result: Dictionary) -> void:
 			print("  battle %d: %s by %s in %ds (standing %d-%d)" % [result["match"], result["winner_name"], result["reason"], int(result["duration"]), result["alive"][0], result["alive"][1]])
 		if batch_left > 0:
 			if hud != null:
-				hud.set_status("Batch: %d done, %d to go..." % [batch_results.size(), batch_left])
+				hud.batch_progress(batch_results.size() + 1, batch_results.size() + batch_left)
 			_restart_timer = 0.05
 			return
 		var summary := _summarize(batch_results)
@@ -168,9 +202,17 @@ func _on_match_ended(result: Dictionary) -> void:
 			print("SUMMARY " + JSON.stringify(summary["data"]))
 			get_tree().quit()
 			return
+		hud.batch_progress(0, 0)
 		hud.show_batch(summary)
 		set_sim_speed(1.0)
 		hud._set_speed(1.0)
+		if DisplayServer.get_name() == "headless":
+			print("batch panel: %s, %d rows" % [hud.results_title.text, hud.results_box.get_child_count()])
+			get_tree().quit()
+		return
+	if hud != null and campaign_active:
+		hud.set_status("Round %d over - %s" % [campaign_round, result["winner_name"]])
+		_on_round_ended(result)
 		return
 	if hud != null:
 		hud.set_status("Battle over - %s" % result["winner_name"])
@@ -209,5 +251,124 @@ func _summarize(results: Array[Dictionary]) -> Dictionary:
 		txt += "%s per battle: %d shots at %d%%, %d volleys, %d charges, %d fall-backs, %d ran; killed %d by ball, %d by bayonet; %d friendly hits.  " % [
 			MatchManager.TEAM_NAMES[t], tot["shots"][t] / n, int(acc), tot["volleys"][t] / n, tot["charges"][t] / n,
 			tot["fallbacks"][t] / n, tot["routed"][t] / n, kills[t][0] / n, kills[t][1] / n, tot["friendly"][t] / n]
+	var battles := []
+	for r in results:
+		battles.append({"match": r["match"], "winner": r["winner"], "winner_name": r["winner_name"], "reason": r["reason"],
+			"duration": r["duration"], "alive": r["alive"], "fighting": r["fighting"]})
 	return {"text": txt, "data": {"matches": results.size(), "wins": wins, "draws": draws, "avg_duration": dur / n,
-		"totals": tot, "kills": kills, "presets": manager.team_preset_names.duplicate(), "types": manager.team_type_names.duplicate()}}
+		"totals": tot, "kills": kills, "presets": manager.team_preset_names.duplicate(), "types": manager.team_type_names.duplicate(),
+		"sizes": manager.team_sizes.duplicate(), "battles": battles}}
+
+
+# ---------------------------------------------------------------- campaign
+
+func _rebuild_field(layout: String) -> void:
+	if field != null:
+		manager.clear()
+		field.queue_free()
+	field = Field.new()
+	field.layout_name = layout
+	add_child(field)
+	manager.field = field
+
+
+func _start_campaign() -> void:
+	batch_left = 0
+	batch_results.clear()
+	campaign_active = true
+	campaign_round = 0
+	campaign_wins = [0, 0]
+	campaign_kills = [0, 0]
+	campaign_rounds.clear()
+	campaign_rosters = [[], []]
+	manager.rosters = [[], []]
+	hud.campaign_started()
+	_next_round()
+
+
+## Field the next round: survivors plus recruits to full strength, except the last round,
+## which is fought with whoever is left.
+func _next_round() -> void:
+	if not campaign_active:
+		return
+	campaign_round += 1
+	var layout: String = Field.LAYOUT_ORDER[(campaign_round - 1) % Field.LAYOUT_ORDER.size()]
+	_rebuild_field(layout)
+	var last := campaign_round >= CAMPAIGN_ROUNDS
+	for t in 2:
+		var roster: Array = campaign_rosters[t].duplicate(true)
+		if not last:
+			var want: int = clampi(int(manager.team_sizes[t]), 1, MatchManager.MAX_SIZE)
+			var next_no := 1
+			for r in roster:
+				next_no = maxi(next_no, int(r.get("no", 0)) + 1)
+			while roster.size() < want:
+				roster.append({"name": "%s %d" % [MatchManager.TEAM_NAMES[t][0], next_no], "no": next_no,
+					"seed": randi(), "kills": 0, "rounds": 0, "recruit": true})
+				next_no += 1
+		manager.rosters[t] = roster
+	hud.set_round(campaign_round, CAMPAIGN_ROUNDS, layout, [manager.rosters[0].size(), manager.rosters[1].size()])
+	_start_next()
+
+
+func _abandon_campaign() -> void:
+	campaign_active = false
+	campaign_round = 0
+	manager.rosters = [[], []]
+	hud.campaign_ended()
+	_rebuild_field("Walled Farm")
+	_start_next()
+
+
+## After a campaign round: bank the result, keep the men who stood or ran, drop the dead.
+func _on_round_ended(result: Dictionary) -> void:
+	var w: int = result["winner"]
+	if w >= 0:
+		campaign_wins[w] += 1
+	var st: Dictionary = result["stats"]
+	var survivors := [[], []]
+	var counts := [{"stood": 0, "ran": 0, "fell": 0}, {"stood": 0, "ran": 0, "fell": 0}]
+	for m in result["soldiers"]:
+		var t: int = m["team"]
+		if not m["alive"]:
+			counts[t]["fell"] += 1
+			continue
+		if m["routed"] or m["gone"]:
+			counts[t]["ran"] += 1
+		else:
+			counts[t]["stood"] += 1
+		var no := int(String(m["name"]).get_slice(" ", 1)) if String(m["name"]).contains(" ") else 0
+		survivors[t].append({"name": m["name"], "no": no, "seed": m["seed"], "kills": m["career_kills"],
+			"rounds": int(m["rounds"]) + 1, "recruit": false})
+	for t in 2:
+		campaign_kills[t] += st["kills"][t][0] + st["kills"][t][1]
+		campaign_rosters[t] = survivors[t]
+	var layout: String = Field.LAYOUT_ORDER[(campaign_round - 1) % Field.LAYOUT_ORDER.size()]
+	campaign_rounds.append({"round": campaign_round, "field": layout, "winner": w, "winner_name": result["winner_name"],
+		"reason": result["reason"], "duration": result["duration"], "counts": counts})
+	var over: bool = campaign_round >= CAMPAIGN_ROUNDS or (survivors[0] as Array).is_empty() or (survivors[1] as Array).is_empty()
+	var summary := {"round": campaign_round, "rounds": CAMPAIGN_ROUNDS, "field": layout, "wins": campaign_wins.duplicate(),
+		"kills": campaign_kills.duplicate(), "history": campaign_rounds.duplicate(true), "counts": counts,
+		"next_sizes": [survivors[0].size(), survivors[1].size()], "last_next": campaign_round + 1 >= CAMPAIGN_ROUNDS,
+		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result}
+	if over:
+		var cw := -1
+		if campaign_wins[0] != campaign_wins[1]:
+			cw = 0 if campaign_wins[0] > campaign_wins[1] else 1
+		elif campaign_kills[0] != campaign_kills[1]:
+			cw = 0 if campaign_kills[0] > campaign_kills[1] else 1
+		summary["campaign_winner"] = cw
+		campaign_active = false
+		hud.campaign_ended()
+	get_tree().create_timer(2.0).timeout.connect(func(): hud.show_round(summary))
+	if DisplayServer.get_name() == "headless":
+		print("round %d on %s: %s (%s) stood %d/%d ran %d/%d fell %d/%d -> next %s" % [campaign_round, layout, result["winner_name"], result["reason"],
+			counts[0]["stood"], counts[1]["stood"], counts[0]["ran"], counts[1]["ran"], counts[0]["fell"], counts[1]["fell"], str(summary["next_sizes"])])
+		get_tree().create_timer(2.5).timeout.connect(func():
+			print("round panel: %s, %d rows" % [hud.results_title.text, hud.results_box.get_child_count()])
+			if over:
+				print("campaign: wins %s kills %s winner %d" % [str(campaign_wins), str(campaign_kills), summary["campaign_winner"]])
+				get_tree().quit()
+			else:
+				hud.results_overlay.visible = false
+				_next_round())

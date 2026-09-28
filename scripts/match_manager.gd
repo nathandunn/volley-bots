@@ -24,6 +24,9 @@ var team_preset_names: Array[String] = ["Regulars", "Skirmishers"]
 var team_types: Array[SoldierType] = [SoldierType.preset("Even"), SoldierType.preset("Even")]
 var team_type_names: Array[String] = ["Even", "Even"]
 var team_sizes := [TEAM_SIZE, TEAM_SIZE]
+## Campaign rosters: per team, the men to field this round as records
+## {name, seed, kills, rounds, recruit}. Empty means a fresh company of team_sizes[t].
+var rosters: Array = [[], []]
 
 var soldiers: Array[Soldier] = []
 var orders: Array[Dictionary] = [{}, {}]
@@ -59,18 +62,26 @@ func start_match(seed_value: int = -1) -> void:
 	elapsed = 0.0
 	stats = _fresh_stats()
 	for t in 2:
-		var n: int = clampi(int(team_sizes[t]), 1, MAX_SIZE)
+		var roster: Array = rosters[t]
+		var n: int = roster.size() if not roster.is_empty() else clampi(int(team_sizes[t]), 1, MAX_SIZE)
 		var spacing := 1.0
 		var order := _blank_order(t, n)
 		order["spacing"] = spacing
 		orders[t] = order
 		for i in n:
+			var rec: Dictionary = roster[i] if not roster.is_empty() else {}
 			var s := Soldier.new()
 			s.team = t
 			s.team_color = TEAM_COLORS[t]
-			s.soldier_name = "%s %d" % [TEAM_NAMES[t][0], i + 1]
-			s.personality = team_personalities[t].jittered(rng, 0.1)
-			s.soldier_type = team_types[t].jittered(rng, 0.02)
+			s.soldier_name = rec.get("name", "%s %d" % [TEAM_NAMES[t][0], i + 1])
+			# a man's own quirks come from his seed, so a veteran is the same man every round
+			var prng := RandomNumberGenerator.new()
+			prng.seed = int(rec.get("seed", rng.randi()))
+			s.personality = team_personalities[t].jittered(prng, 0.1)
+			s.soldier_type = team_types[t].jittered(prng, 0.02)
+			s.kills = int(rec.get("kills", 0))
+			s.rounds = int(rec.get("rounds", 0))
+			s.record_seed = prng.seed
 			s.manager = self
 			s.field = field
 			s.slot = i
@@ -556,7 +567,8 @@ func end_match(reason: String) -> void:
 	var per := []
 	for s in soldiers:
 		per.append({"name": s.soldier_name, "team": s.team, "alive": s.alive, "routed": s.is_routed, "gone": s.gone,
-			"shots": s.shots, "hits": s.hits, "kills": s.kills, "bayonet_kills": s.bayonet_kills,
+			"seed": s.record_seed, "rounds": s.rounds, "career_kills": s.kills,
+			"shots": s.shots, "hits": s.hits, "kills": s.kills - s.kills_before, "bayonet_kills": s.bayonet_kills,
 			"thrusts": s.thrusts, "thrust_hits": s.thrust_hits, "dmg": s.dmg_done, "hp": s.hp,
 			"persona": s.personality.label(), "type": s.soldier_type.label()})
 	var result := {"match": match_index, "winner": winner, "winner_name": TEAM_NAMES[winner] if winner >= 0 else "Draw",

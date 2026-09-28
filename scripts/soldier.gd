@@ -18,6 +18,7 @@ const RUN := 4.6
 const RELOAD := 9.0            # seconds, an even type; ~3 rounds a minute for a rifled musket
 const MAX_RANGE := 80.0
 const POINT_BLANK := 12.0
+const STEEL_RANGE := 3.0        # an enemy this close is a bayonet matter; no one shoots with a blade coming in
 const BASE_HIT := 0.28          # p(hit) at short range for an even type, still target, clear (musketry was poor)
 const KILL_BASE := 0.35         # p(a hit kills outright) at an even accuracy
 const WOUND := 45.0
@@ -90,7 +91,10 @@ var _cover_spot: Dictionary = {}
 var _cover_hold := 0.0
 var _jitter := Vector3.ZERO
 
-# stats
+# stats (kills is the career total in a campaign; kills_before is where this round started)
+var kills_before := 0
+var rounds := 0
+var record_seed := 0
 var shots := 0
 var hits := 0
 var kills := 0
@@ -148,6 +152,7 @@ func apply_type() -> void:
 	stamina = stamina_max
 	hp = MAX_HP
 	courage = personality.get_trait("nerve")
+	kills_before = kills
 
 
 func p(t: String) -> float:
@@ -221,7 +226,7 @@ func _decide() -> void:
 	target = enemy
 	want_run = false
 	kneeling = false
-	in_melee = enemy != null and enemy_d < BAYONET_REACH + 0.3
+	in_melee = enemy != null and enemy_d < STEEL_RANGE
 
 	if is_routed:
 		# run for the rear; a steadied man (courage back up) may stop and fight again
@@ -262,12 +267,12 @@ func _decide() -> void:
 		if p("discipline") > 0.3 and manager.ahead_of_line(self) > 3.0 and enemy_d > 6.0:
 			want_run = false
 		# a loaded man charging fires it off at point blank
-		if loaded and enemy_d < POINT_BLANK and _can_fire_at(enemy):
+		if loaded and enemy_d < POINT_BLANK and enemy_d >= STEEL_RANGE and _can_fire_at(enemy):
 			_fire(enemy)
 		return
 
 	# firing
-	if loaded and enemy != null and enemy_d <= MAX_RANGE and _can_fire_at(enemy):
+	if loaded and enemy != null and enemy_d <= MAX_RANGE and enemy_d >= STEEL_RANGE and _can_fire_at(enemy):
 		var my_range := 75.0 - 50.0 * p("patience")
 		var volley_now: bool = order["volley_id"] != _volley_seen and order["volley_age"] < 0.7
 		var disciplined: bool = p("discipline") > 0.45 and order["mode"] != "at_will" and not order["alone"]
@@ -281,6 +286,11 @@ func _decide() -> void:
 			fire_now = true
 		elif disciplined and order["volley_age"] > 14.0 and enemy_d <= my_range and rng.randf() < 0.15:
 			fire_now = true   # the volley is not coming; an old hand takes his shot
+		if fire_now and velocity.length() > 0.5 and enemy_d > POINT_BLANK:
+			_halt = 0.8   # stop, then shoot: the next decision finds him standing
+			action = "aim"
+			face_point = enemy.global_position
+			return
 		if fire_now:
 			_fire(enemy)
 			# fire and fall back: the man who would rather not be bayoneted
@@ -383,7 +393,11 @@ func _fire(enemy: Soldier) -> void:
 	var cover_f := field.line_of_fire(from, to)
 	if enemy.kneeling and cover_f < 1.0:
 		cover_f *= 0.8
-	var move_f := 0.7 if enemy.running and enemy.velocity.length() > 2.0 else 1.0
+	var tv := enemy.velocity.length()
+	var move_f := 1.0 if tv < 0.5 else (0.85 if tv < 2.5 else 0.75)   # a walking target costs a little, a running one a bit more
+	var mv := velocity.length()
+	if mv > 0.5:
+		move_f *= 0.5 if mv < 2.5 else 0.3   # firing on the move costs a lot; at the run, most of it
 	var fatigue_f := 0.75 if tired() else 1.0
 	var wound_f := 0.8 if wounded else 1.0
 	var p_hit := BASE_HIT * hit_mult * range_f * cover_f * move_f * fatigue_f * wound_f
@@ -629,7 +643,7 @@ func _build_body() -> void:
 	rifle.add_child(_smoke)
 
 	label = Label3D.new()
-	label.text = soldier_name
+	label.text = soldier_name if rounds == 0 else "%s *%d" % [soldier_name, rounds]   # *n: rounds survived
 	label.font_size = 26
 	label.pixel_size = 0.012
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED

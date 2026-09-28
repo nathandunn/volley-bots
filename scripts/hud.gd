@@ -7,6 +7,9 @@ signal batch_requested(n: int)
 signal speed_changed(scale: float)
 signal pause_toggled(paused: bool)
 signal fit_requested
+signal campaign_requested
+signal next_round_requested
+signal campaign_abandoned
 
 const PRESET_LIST := ["Regulars", "Skirmishers", "Shock", "Militia", "Veterans", "Balanced", "Random"]
 const TYPE_LIST := ["Even", "Marksman", "Grenadier", "Runner", "Ironside", "Random"]
@@ -34,6 +37,13 @@ var _tick := 0.0
 var _root: Control
 var _paused := false
 var _top: Control
+var round_label: Label
+var _round_text := ""
+var _batch_text := ""
+var campaign_on := false
+var _type_controls := [[], []]   # chips and sliders locked while a campaign runs
+var _campaign_btn: Button
+var _fight_btn: Button
 
 
 func setup(m: MatchManager) -> void:
@@ -90,6 +100,16 @@ func setup(m: MatchManager) -> void:
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(status_label)
+	round_label = Label.new()
+	round_label.add_theme_font_size_override("font_size", 15)
+	round_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.6))
+	round_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	round_label.add_theme_constant_override("shadow_offset_x", 1)
+	round_label.add_theme_constant_override("shadow_offset_y", 1)
+	round_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	round_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	round_label.visible = false
+	top.add_child(round_label)
 	for t in 2:
 		var l := Label.new()
 		l.add_theme_font_size_override("font_size", 15)
@@ -167,7 +187,7 @@ func _build_teams_overlay() -> void:
 	teams_overlay = parts[0]
 	var box: VBoxContainer = parts[1]
 	var note := Label.new()
-	note.text = "Nobody takes orders. Pick what the men are (four properties that share one budget) and who they are (six traits); formation, cover, volleys, charges and retreats all come out of that."
+	note.text = "Nobody takes orders. Pick what the men are (four properties on one budget) and who they are (six traits); formation, cover, volleys, charges and retreats all come out of that. Simulation: one battle, or Sim x10 for the numbers. Campaign: five rounds on five fields - the men who stand or run carry over, the dead do not; recruits fill the ranks until the last round, which is fought with what is left. Types lock once a campaign starts; personalities may change between rounds."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.add_theme_font_size_override("font_size", 13)
 	note.add_theme_color_override("font_color", Color(0.75, 0.75, 0.7))
@@ -181,8 +201,24 @@ func _build_teams_overlay() -> void:
 	box.add_child(foot)
 	var fight := _button("Fight with these companies")
 	fight.custom_minimum_size = Vector2(0, 46)
-	fight.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
+	fight.pressed.connect(func():
+		_close_overlays()
+		if campaign_on:
+			next_round_requested.emit()
+		else:
+			new_match_requested.emit())
 	foot.add_child(fight)
+	_fight_btn = fight
+	var camp := _button("Start a campaign (5 rounds)")
+	camp.custom_minimum_size = Vector2(0, 46)
+	camp.pressed.connect(func():
+		_close_overlays()
+		if campaign_on:
+			campaign_abandoned.emit()
+		else:
+			campaign_requested.emit())
+	foot.add_child(camp)
+	_campaign_btn = camp
 	var close2 := _button("Close")
 	close2.custom_minimum_size = Vector2(96, 46)
 	close2.pressed.connect(func(): teams_overlay.visible = false)
@@ -274,6 +310,7 @@ func _chip_row(t: int, names: Array, is_type: bool) -> Control:
 		row.add_child(b)
 		if is_type:
 			type_chips[t][n] = b
+			_type_controls[t].append(b)
 		else:
 			persona_chips[t][n] = b
 	return row
@@ -308,6 +345,7 @@ func _slider_row(t: int, key: String, help: String, is_type: bool) -> Control:
 	if is_type:
 		type_sliders[t][key] = s
 		type_vals[t][key] = v
+		_type_controls[t].append(s)
 		s.value_changed.connect(func(val: float): _on_type_slider(t, key, val))
 	else:
 		persona_sliders[t][key] = s
@@ -413,7 +451,8 @@ func _process(delta: float) -> void:
 		team_labels[t].text = "%s: %d standing (%d in line) · %s · volleys %d · shots %d/%d · %s leads" % [
 			MatchManager.TEAM_NAMES[t], alive, fighting, mode.replace("_", " "), st["volleys"][t], st["hits"][t], st["shots"][t], sgt]
 	if manager.running:
-		status_label.text = "%d:%02d" % [int(manager.elapsed) / 60, int(manager.elapsed) % 60]
+		var clock := "%d:%02d" % [int(manager.elapsed) / 60, int(manager.elapsed) % 60]
+		status_label.text = (_batch_text + " · " + clock) if _batch_text != "" else clock
 
 
 func show_result(res: Dictionary) -> void:
@@ -463,17 +502,233 @@ func show_result(res: Dictionary) -> void:
 func show_batch(summary: Dictionary) -> void:
 	for c in results_box.get_children():
 		c.queue_free()
-	results_title.text = "Batch of %d" % summary["data"]["matches"]
-	var l := Label.new()
-	l.text = summary["text"]
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	results_box.add_child(l)
+	var d: Dictionary = summary["data"]
+	var n: int = maxi(int(d["matches"]), 1)
+	var tot: Dictionary = d["totals"]
+	var kills: Array = d["kills"]
+	var wins: Array = d["wins"]
+	results_title.text = "Batch of %d - %s %d, %s %d, drawn %d" % [n, MatchManager.TEAM_NAMES[0], wins[0], MatchManager.TEAM_NAMES[1], wins[1], d["draws"]]
+
+	# the companies
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 4)
+	results_box.add_child(grid)
+	_cell(grid, "", false)
+	for t in 2:
+		_cell(grid, "%s" % MatchManager.TEAM_NAMES[t], true, MatchManager.TEAM_COLORS[t].lightened(0.4))
+	var rows: Array = [
+		["Company", ["%s / %s, %d men" % [d["presets"][0], d["types"][0], d["sizes"][0]], "%s / %s, %d men" % [d["presets"][1], d["types"][1], d["sizes"][1]]]],
+		["Wins", ["%d of %d" % [wins[0], n], "%d of %d" % [wins[1], n]]],
+	]
+	for r in rows:
+		_cell(grid, r[0], true)
+		for t in 2:
+			_cell(grid, r[1][t], false, MatchManager.TEAM_COLORS[t].lightened(0.5))
+	_section(results_box, "Musketry, per battle")
+	var g2 := _stat_grid()
+	_stat_row(g2, "Shots fired", [tot["shots"][0] / n, tot["shots"][1] / n])
+	_stat_row(g2, "Hit rate", ["%d%%" % int(float(tot["hits"][0]) / maxf(float(tot["shots"][0]), 1.0) * 100.0), "%d%%" % int(float(tot["hits"][1]) / maxf(float(tot["shots"][1]), 1.0) * 100.0)])
+	_stat_row(g2, "Volleys called", [tot["volleys"][0] / n, tot["volleys"][1] / n])
+	_stat_row(g2, "Killed by ball", [kills[0][0] / n, kills[1][0] / n])
+	_stat_row(g2, "Friendly hits", [tot["friendly"][0] / n, tot["friendly"][1] / n])
+	_section(results_box, "The bayonet, per battle")
+	var g3 := _stat_grid()
+	_stat_row(g3, "Charges", [tot["charges"][0] / n, tot["charges"][1] / n])
+	_stat_row(g3, "Thrusts", [tot["thrusts"][0] / n, tot["thrusts"][1] / n])
+	_stat_row(g3, "Thrusts landed", ["%d%%" % int(float(tot["thrust_hits"][0]) / maxf(float(tot["thrusts"][0]), 1.0) * 100.0), "%d%%" % int(float(tot["thrust_hits"][1]) / maxf(float(tot["thrusts"][1]), 1.0) * 100.0)])
+	_stat_row(g3, "Killed by bayonet", [kills[0][1] / n, kills[1][1] / n])
+	_section(results_box, "Nerve, per battle")
+	var g4 := _stat_grid()
+	_stat_row(g4, "Fall-backs ordered", [tot["fallbacks"][0] / n, tot["fallbacks"][1] / n])
+	_stat_row(g4, "Men who ran", [tot["routed"][0] / n, tot["routed"][1] / n])
+	_stat_row(g4, "Killed, all told", [(kills[1][0] + kills[1][1]) / n, (kills[0][0] + kills[0][1]) / n])
+	_section(results_box, "The battles (avg %d:%02d)" % [int(d["avg_duration"]) / 60, int(d["avg_duration"]) % 60])
+	var g5 := GridContainer.new()
+	g5.columns = 5
+	g5.add_theme_constant_override("h_separation", 14)
+	results_box.add_child(g5)
+	for h in ["#", "Winner", "How", "Time", "Standing"]:
+		_cell(g5, h, true)
+	for b in d.get("battles", []):
+		_cell(g5, str(b["match"]), false)
+		var w: int = int(b["winner"])
+		_cell(g5, b["winner_name"], false, MatchManager.TEAM_COLORS[w].lightened(0.5) if w >= 0 else Color(0.8, 0.8, 0.8))
+		_cell(g5, b["reason"], false)
+		_cell(g5, "%d:%02d" % [int(b["duration"]) / 60, int(b["duration"]) % 60], false)
+		_cell(g5, "%d - %d" % [b["alive"][0], b["alive"][1]], false)
+
 	var row := HFlowContainer.new()
 	results_box.add_child(row)
 	var again := _button("New battle")
 	again.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
 	row.add_child(again)
+	var batch := _button("Sim ×%d again" % BATCH_N)
+	batch.pressed.connect(func(): _close_overlays(); batch_requested.emit(BATCH_N))
+	row.add_child(batch)
 	var teams := _button("Companies")
 	teams.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 	row.add_child(teams)
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(0, 30)
+	results_box.add_child(pad)
 	results_overlay.visible = true
+
+
+func batch_progress(i: int, n: int) -> void:
+	_batch_text = "Sim %d of %d" % [i, n] if n > 0 else ""
+	if n > 0:
+		status_label.text = _batch_text
+
+
+func set_round(r: int, total: int, layout: String, sizes: Array) -> void:
+	_round_text = "Round %d of %d - %s · Red %d men, Blue %d men" % [r, total, layout, sizes[0], sizes[1]]
+	round_label.text = _round_text
+	round_label.visible = true
+
+
+func campaign_started() -> void:
+	campaign_on = true
+	for t in 2:
+		for c in _type_controls[t]:
+			if c is Button:
+				c.disabled = true
+			if c is HSlider:
+				c.editable = false
+	_fight_btn.text = "Next round with these personalities"
+	_campaign_btn.text = "Abandon campaign"
+
+
+func campaign_ended() -> void:
+	campaign_on = false
+	round_label.visible = false
+	for t in 2:
+		for c in _type_controls[t]:
+			if c is Button:
+				c.disabled = false
+			if c is HSlider:
+				c.editable = true
+	_fight_btn.text = "Fight with these companies"
+	_campaign_btn.text = "Start a campaign (5 rounds)"
+
+
+## Between rounds (and at the end): what the round cost each side, the score so far, and
+## what marches next.
+func show_round(sm: Dictionary) -> void:
+	for c in results_box.get_children():
+		c.queue_free()
+	var res: Dictionary = sm["result"]
+	var over: bool = sm["over"]
+	if over:
+		var cw: int = sm["campaign_winner"]
+		results_title.text = "Campaign over - %s" % (("%s wins the campaign" % MatchManager.TEAM_NAMES[cw]) if cw >= 0 else "drawn")
+	else:
+		results_title.text = "Round %d of %d on the %s - %s" % [sm["round"], sm["rounds"], sm["field"],
+			("%s wins" % res["winner_name"]) if res["winner"] >= 0 else "drawn"]
+	_section(results_box, "Campaign score")
+	var g := _stat_grid()
+	_stat_row(g, "Rounds won", [sm["wins"][0], sm["wins"][1]])
+	_stat_row(g, "Killed, all rounds", [sm["kills"][0], sm["kills"][1]])
+	_section(results_box, "This round")
+	var g2 := _stat_grid()
+	var c: Array = sm["counts"]
+	_stat_row(g2, "Stood their ground", [c[0]["stood"], c[1]["stood"]])
+	_stat_row(g2, "Ran (and live)", [c[0]["ran"], c[1]["ran"]])
+	_stat_row(g2, "Fell", [c[0]["fell"], c[1]["fell"]])
+	var st: Dictionary = res["stats"]
+	_stat_row(g2, "Hit rate", ["%d%%" % int(float(st["hits"][0]) / maxf(float(st["shots"][0]), 1.0) * 100.0), "%d%%" % int(float(st["hits"][1]) / maxf(float(st["shots"][1]), 1.0) * 100.0)])
+	_stat_row(g2, "Killed by ball / bayonet", ["%d / %d" % [st["kills"][0][0], st["kills"][0][1]], "%d / %d" % [st["kills"][1][0], st["kills"][1][1]]])
+	if not over:
+		_section(results_box, "Next round")
+		var g3 := _stat_grid()
+		var ns: Array = sm["next_sizes"]
+		var ts: Array = sm["team_sizes"]
+		_stat_row(g3, "Veterans carried over", [ns[0], ns[1]])
+		if sm["last_next"]:
+			_stat_row(g3, "Recruits", ["none - the last round", "none - the last round"])
+		else:
+			_stat_row(g3, "Recruits", [maxi(int(ts[0]) - int(ns[0]), 0), maxi(int(ts[1]) - int(ns[1]), 0)])
+		var nl := Label.new()
+		nl.text = "Types are locked. Personalities may be changed under Companies before the next round."
+		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		nl.add_theme_font_size_override("font_size", 13)
+		nl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.7))
+		results_box.add_child(nl)
+	_section(results_box, "The rounds so far")
+	var g5 := GridContainer.new()
+	g5.columns = 5
+	g5.add_theme_constant_override("h_separation", 14)
+	results_box.add_child(g5)
+	for h in ["#", "Field", "Winner", "How", "Time"]:
+		_cell(g5, h, true)
+	for b in sm["history"]:
+		_cell(g5, str(b["round"]), false)
+		_cell(g5, b["field"], false)
+		var w: int = int(b["winner"])
+		_cell(g5, b["winner_name"], false, MatchManager.TEAM_COLORS[w].lightened(0.5) if w >= 0 else Color(0.8, 0.8, 0.8))
+		_cell(g5, b["reason"], false)
+		_cell(g5, "%d:%02d" % [int(b["duration"]) / 60, int(b["duration"]) % 60], false)
+	var row := HFlowContainer.new()
+	results_box.add_child(row)
+	if over:
+		var again := _button("New campaign")
+		again.pressed.connect(func(): _close_overlays(); campaign_requested.emit())
+		row.add_child(again)
+		var sim := _button("Back to simulation")
+		sim.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
+		row.add_child(sim)
+	else:
+		var nxt := _button("Next round")
+		nxt.pressed.connect(func(): _close_overlays(); next_round_requested.emit())
+		row.add_child(nxt)
+		var teams := _button("Companies (personalities)")
+		teams.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
+		row.add_child(teams)
+		var quit := _button("Abandon campaign")
+		quit.pressed.connect(func(): _close_overlays(); campaign_abandoned.emit())
+		row.add_child(quit)
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(0, 30)
+	results_box.add_child(pad)
+	results_overlay.visible = true
+
+
+func _section(parent: Control, text: String) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 16)
+	l.add_theme_color_override("font_color", Color(0.9, 0.85, 0.6))
+	var sp := Control.new()
+	sp.custom_minimum_size = Vector2(0, 8)
+	parent.add_child(sp)
+	parent.add_child(l)
+
+
+func _stat_grid() -> GridContainer:
+	var g := GridContainer.new()
+	g.columns = 3
+	g.add_theme_constant_override("h_separation", 14)
+	g.add_theme_constant_override("v_separation", 3)
+	results_box.add_child(g)
+	_cell(g, "", false)
+	for t in 2:
+		_cell(g, MatchManager.TEAM_NAMES[t], true, MatchManager.TEAM_COLORS[t].lightened(0.4))
+	return g
+
+
+func _stat_row(g: GridContainer, label_text: String, vals: Array) -> void:
+	_cell(g, label_text, false)
+	for t in 2:
+		_cell(g, str(vals[t]), false, MatchManager.TEAM_COLORS[t].lightened(0.55))
+
+
+func _cell(g: GridContainer, text: String, bold: bool, color: Color = Color(0.92, 0.92, 0.88)) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 15 if bold else 14)
+	l.add_theme_color_override("font_color", color)
+	l.custom_minimum_size = Vector2(90, 0)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	g.add_child(l)
