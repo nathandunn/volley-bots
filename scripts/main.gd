@@ -113,7 +113,8 @@ func _ready() -> void:
 		# --ui --batch=N: the Sim button's path, HUD and all, for a headless check of the panel
 		_run_batch(maxi(int(args["batch"]), 1))
 		return
-	_start_next()
+	# nothing starts by itself: the setup panel asks what we are running
+	hud.open_setup("What are we running? A campaign, or a single battle with these companies.")
 
 
 func _setup_ui_scale() -> void:
@@ -359,7 +360,7 @@ func _abandon_campaign() -> void:
 	manager.rosters = [[], []]
 	hud.campaign_ended()
 	_rebuild_field("Walled Farm")
-	_start_next()
+	hud.open_setup("Campaign abandoned. What next?")
 
 
 ## After a campaign round: bank the result, keep the men who stood or ran, drop the dead.

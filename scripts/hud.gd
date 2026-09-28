@@ -46,6 +46,7 @@ var _campaign_btn: Button
 var _fight_btn: Button
 var _top_campaign_btn: Button
 var _fight_btn0: Button
+var _setup_note: Label
 var _head_campaign_btn: Button
 ## Who picks each side's personality between campaign rounds: "you" or "computer"
 var commanders := ["you", "computer"]
@@ -221,6 +222,12 @@ func _build_teams_overlay() -> void:
 	var parts := _overlay("Companies")
 	teams_overlay = parts[0]
 	var box: VBoxContainer = parts[1]
+	_setup_note = Label.new()
+	_setup_note.add_theme_font_size_override("font_size", 16)
+	_setup_note.add_theme_color_override("font_color", Color(0.95, 0.88, 0.6))
+	_setup_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_setup_note.visible = false
+	box.add_child(_setup_note)
 	var head := HFlowContainer.new()
 	box.add_child(head)
 	_head_campaign_btn = _button("Start a campaign (5 rounds)")
@@ -505,6 +512,7 @@ func _close_overlays() -> void:
 
 func on_match_started() -> void:
 	_close_overlays()
+	_setup_note.visible = false
 	set_status("The lines are drawn.")
 
 
@@ -669,6 +677,16 @@ func set_round(r: int, total: int, layout: String, sizes: Array) -> void:
 	_round_text = "Round %d of %d - %s · Red %d men, Blue %d men" % [r, total, layout, sizes[0], sizes[1]]
 	round_label.text = _round_text
 	round_label.visible = true
+
+
+## The setup panel, with a line at the top saying why it is open. Nothing runs until a
+## button here (or the top row) says so.
+func open_setup(why: String) -> void:
+	_close_overlays()
+	_setup_note.text = why
+	_setup_note.visible = why != ""
+	teams_overlay.visible = true
+	status_label.text = "Nothing running - choose under Companies."
 
 
 func _set_commander(t: int, who: String) -> void:
