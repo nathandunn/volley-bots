@@ -577,6 +577,15 @@ func _close_overlays() -> void:
 	results_overlay.visible = false
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	var open := (teams_overlay != null and teams_overlay.visible) or (results_overlay != null and results_overlay.visible)
+	if open:
+		_close_overlays()
+		get_viewport().set_input_as_handled()
+
+
 func on_match_started() -> void:
 	_close_overlays()
 	_setup_note.visible = false
