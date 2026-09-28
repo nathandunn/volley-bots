@@ -77,7 +77,7 @@ func _setup_ui_scale() -> void:
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_IGNORE
 	var dpi := DisplayServer.screen_get_dpi()
-	root.content_scale_factor = clampf(float(dpi) / 96.0, 1.0, 3.0)
+	root.content_scale_factor = clampf(float(dpi) / 96.0, 1.0, 2.0)
 
 
 ## Speed up game time without coarsening physics: raise the tick rate to match.

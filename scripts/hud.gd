@@ -26,12 +26,14 @@ var persona_sliders := [{}, {}]
 var persona_vals := [{}, {}]
 var type_sliders := [{}, {}]
 var type_vals := [{}, {}]
-var persona_pick: Array[OptionButton] = []
-var type_pick: Array[OptionButton] = []
+var persona_chips := [{}, {}]
+var type_chips := [{}, {}]
+var help_labels := [{}, {}]
 var _updating := false
 var _tick := 0.0
 var _root: Control
 var _paused := false
+var _top: Control
 
 
 func setup(m: MatchManager) -> void:
@@ -42,6 +44,7 @@ func setup(m: MatchManager) -> void:
 	add_child(_root)
 
 	var top := VBoxContainer.new()
+	_top = top
 	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	top.offset_top = 44   # under the back-to-apps pill
 	top.offset_left = 8
@@ -114,12 +117,12 @@ func _button(text: String) -> Button:
 func _overlay(title_text: String) -> Array:
 	var ov := PanelContainer.new()
 	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
-	ov.offset_top = 40
+	ov.offset_top = 44
 	ov.offset_left = 6
 	ov.offset_right = -6
 	ov.offset_bottom = -6
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.07, 0.09, 0.93)
+	sb.bg_color = Color(0.06, 0.07, 0.09, 0.97)
 	sb.corner_radius_top_left = 10
 	sb.corner_radius_top_right = 10
 	sb.corner_radius_bottom_left = 10
@@ -130,19 +133,25 @@ func _overlay(title_text: String) -> Array:
 	sb.content_margin_bottom = 8
 	ov.add_theme_stylebox_override("panel", sb)
 	ov.visible = false
+	ov.visibility_changed.connect(func(): _top.visible = not (teams_overlay != null and teams_overlay.visible or results_overlay != null and results_overlay.visible))
 	_root.add_child(ov)
 	var vb := VBoxContainer.new()
 	ov.add_child(vb)
 	var head := HBoxContainer.new()
 	vb.add_child(head)
-	var title := Label.new()
-	title.text = title_text
-	title.add_theme_font_size_override("font_size", 20)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(title)
-	var close := _button("Close")
+	var close := _button("< Close")
+	close.custom_minimum_size = Vector2(96, 40)
+	close.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	close.pressed.connect(func(): ov.visible = false)
 	head.add_child(close)
+	var title := Label.new()
+	title.text = title_text
+	title.add_theme_font_size_override("font_size", 18)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.max_lines_visible = 2
+	head.add_child(title)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -154,7 +163,7 @@ func _overlay(title_text: String) -> Array:
 
 
 func _build_teams_overlay() -> void:
-	var parts := _overlay("Companies - takes effect at the next battle")
+	var parts := _overlay("Companies")
 	teams_overlay = parts[0]
 	var box: VBoxContainer = parts[1]
 	var note := Label.new()
@@ -168,6 +177,19 @@ func _build_teams_overlay() -> void:
 	box.add_child(cols)
 	for t in 2:
 		cols.add_child(_build_team_panel(t))
+	var foot := HFlowContainer.new()
+	box.add_child(foot)
+	var fight := _button("Fight with these companies")
+	fight.custom_minimum_size = Vector2(0, 46)
+	fight.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
+	foot.add_child(fight)
+	var close2 := _button("Close")
+	close2.custom_minimum_size = Vector2(96, 46)
+	close2.pressed.connect(func(): teams_overlay.visible = false)
+	foot.add_child(close2)
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(0, 30)
+	box.add_child(pad)
 
 
 func _build_team_panel(t: int) -> Control:
@@ -203,15 +225,7 @@ func _build_team_panel(t: int) -> Control:
 	tl.text = "Type (the four share one budget)"
 	tl.add_theme_font_size_override("font_size", 15)
 	panel.add_child(tl)
-	var tp := OptionButton.new()
-	tp.custom_minimum_size = Vector2(0, 38)
-	for n in TYPE_LIST:
-		tp.add_item(n)
-	tp.add_item("Custom")
-	tp.select(maxi(TYPE_LIST.find(manager.team_type_names[t]), 0))
-	tp.item_selected.connect(func(i: int): _on_type(t, tp.get_item_text(i)))
-	panel.add_child(tp)
-	type_pick.append(tp)
+	panel.add_child(_chip_row(t, TYPE_LIST, true))
 	var thelp := Label.new()
 	thelp.name = "TypeHelp"
 	thelp.text = SoldierType.TYPE_HELP.get(manager.team_type_names[t], "")
@@ -227,15 +241,7 @@ func _build_team_panel(t: int) -> Control:
 	pl.text = "Personality"
 	pl.add_theme_font_size_override("font_size", 15)
 	panel.add_child(pl)
-	var pp := OptionButton.new()
-	pp.custom_minimum_size = Vector2(0, 38)
-	for n in PRESET_LIST:
-		pp.add_item(n)
-	pp.add_item("Custom")
-	pp.select(maxi(PRESET_LIST.find(manager.team_preset_names[t]), 0))
-	pp.item_selected.connect(func(i: int): _on_preset(t, pp.get_item_text(i)))
-	panel.add_child(pp)
-	persona_pick.append(pp)
+	panel.add_child(_chip_row(t, PRESET_LIST, false))
 	var phelp := Label.new()
 	phelp.name = "PersonaHelp"
 	phelp.text = Personality.PRESET_HELP.get(manager.team_preset_names[t], "")
@@ -245,11 +251,32 @@ func _build_team_panel(t: int) -> Control:
 	panel.add_child(phelp)
 	for tr in Personality.TRAITS:
 		panel.add_child(_slider_row(t, tr, Personality.TRAIT_HELP[tr], false))
-	panel.set_meta("type_help", thelp)
-	panel.set_meta("persona_help", phelp)
-	panel.set_meta("team", t)
+	help_labels[t] = {"type": thelp, "persona": phelp}
 	_refresh_sliders(t)
 	return panel
+
+
+## A row of toggle chips, one per preset: a tap picks it, the chosen one stays lit.
+func _chip_row(t: int, names: Array, is_type: bool) -> Control:
+	var row := HFlowContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for n in names:
+		var b := Button.new()
+		b.text = n
+		b.toggle_mode = true
+		b.custom_minimum_size = Vector2(0, 38)
+		b.add_theme_font_size_override("font_size", 14)
+		b.pressed.connect(func():
+			if is_type:
+				_on_type(t, n)
+			else:
+				_on_preset(t, n))
+		row.add_child(b)
+		if is_type:
+			type_chips[t][n] = b
+		else:
+			persona_chips[t][n] = b
+	return row
 
 
 func _slider_row(t: int, key: String, help: String, is_type: bool) -> Control:
@@ -331,15 +358,15 @@ func _refresh_sliders(t: int) -> void:
 		if type_sliders[t].has(p):
 			type_sliders[t][p].value = manager.team_types[t].get_prop(p)
 			type_vals[t][p].text = "%.2f" % manager.team_types[t].get_prop(p)
-	if persona_pick.size() > t:
-		var pn: String = manager.team_preset_names[t]
-		var idx := PRESET_LIST.find(pn)
-		persona_pick[t].select(idx if idx >= 0 else PRESET_LIST.size())
-		type_pick[t].select(maxi(TYPE_LIST.find(manager.team_type_names[t]), 0) if TYPE_LIST.has(manager.team_type_names[t]) else TYPE_LIST.size())
-		var panel := persona_pick[t].get_parent()
-		if panel.has_meta("persona_help"):
-			(panel.get_meta("persona_help") as Label).text = Personality.PRESET_HELP.get(pn, "Custom blend")
-			(panel.get_meta("type_help") as Label).text = SoldierType.TYPE_HELP.get(manager.team_type_names[t], "Custom build")
+	var pn: String = manager.team_preset_names[t]
+	var tn: String = manager.team_type_names[t]
+	for n in persona_chips[t]:
+		persona_chips[t][n].button_pressed = (n == pn)
+	for n in type_chips[t]:
+		type_chips[t][n].button_pressed = (n == tn)
+	if help_labels[t].has("persona"):
+		help_labels[t]["persona"].text = Personality.PRESET_HELP.get(pn, "Custom blend - the sliders are yours")
+		help_labels[t]["type"].text = SoldierType.TYPE_HELP.get(tn, "Custom build - the sliders are yours")
 	_updating = false
 
 
