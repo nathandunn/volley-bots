@@ -23,6 +23,19 @@ var campaign_kills := [0, 0]
 var campaign_rounds: Array[Dictionary] = []   # one summary per round fought
 var campaign_rosters: Array = [[], []]        # survivors carried into the next round
 var _pending_campaign_result: Dictionary = {}
+var _last_fielded := ["", ""]    # the preset each side fought the last round with
+var _ai_picks := ["", ""]
+
+## What the computer answers each preset with, first choice first. It counters the enemy's
+## last personality; a win keeps the choice more often than not.
+const COUNTERS := {
+	"Regulars": ["Skirmishers", "Veterans", "Shock"],
+	"Skirmishers": ["Shock", "Regulars", "Veterans"],
+	"Shock": ["Regulars", "Veterans", "Skirmishers"],
+	"Militia": ["Shock", "Regulars", "Skirmishers"],
+	"Veterans": ["Skirmishers", "Shock", "Regulars"],
+	"Balanced": ["Shock", "Skirmishers", "Regulars"],
+}
 
 
 func _ready() -> void:
@@ -282,7 +295,13 @@ func _start_campaign() -> void:
 	campaign_rounds.clear()
 	campaign_rosters = [[], []]
 	manager.rosters = [[], []]
+	_last_fielded = ["", ""]
+	_ai_picks = ["", ""]
 	hud.campaign_started()
+	# a computer commander opens with a pick of its own
+	for t in 2:
+		if hud.commanders[t] == "computer":
+			_ai_pick(t, true)
 	_next_round()
 
 
@@ -309,6 +328,29 @@ func _next_round() -> void:
 		manager.rosters[t] = roster
 	hud.set_round(campaign_round, CAMPAIGN_ROUNDS, layout, [manager.rosters[0].size(), manager.rosters[1].size()])
 	_start_next()
+
+
+## The computer's choice of personality for its side, applied to the manager for the coming
+## round. Opening round: any of the five. After that: answer what the enemy fielded, unless
+## the last round was won, in which case keep the winning choice 70 % of the time.
+func _ai_pick(t: int, opening: bool) -> String:
+	var names := ["Regulars", "Skirmishers", "Shock", "Militia", "Veterans"]
+	var pick := ""
+	if opening or _last_fielded[1 - t] == "":
+		pick = names[randi() % names.size()]
+	else:
+		var last_win: bool = not campaign_rounds.is_empty() and int(campaign_rounds[-1]["winner"]) == t
+		if last_win and randf() < 0.7 and _last_fielded[t] != "":
+			pick = _last_fielded[t]
+		else:
+			var opts: Array = COUNTERS.get(_last_fielded[1 - t], names)
+			# first choice most of the time, a surprise now and then
+			pick = opts[0] if randf() < 0.65 else opts[1 + randi() % (opts.size() - 1)]
+	manager.team_personalities[t] = Personality.preset(pick)
+	manager.team_preset_names[t] = pick
+	hud._refresh_sliders(t)
+	_ai_picks[t] = pick
+	return pick
 
 
 func _abandon_campaign() -> void:
@@ -345,12 +387,18 @@ func _on_round_ended(result: Dictionary) -> void:
 		campaign_rosters[t] = survivors[t]
 	var layout: String = Field.LAYOUT_ORDER[(campaign_round - 1) % Field.LAYOUT_ORDER.size()]
 	campaign_rounds.append({"round": campaign_round, "field": layout, "winner": w, "winner_name": result["winner_name"],
-		"reason": result["reason"], "duration": result["duration"], "counts": counts})
+		"reason": result["reason"], "duration": result["duration"], "counts": counts,
+		"fielded": [result["presets"][0], result["presets"][1]]})
+	_last_fielded = [result["presets"][0], result["presets"][1]]
+	_ai_picks = ["", ""]
+	for t in 2:
+		if hud.commanders[t] == "computer":
+			_ai_pick(t, false)
 	var over: bool = campaign_round >= CAMPAIGN_ROUNDS or (survivors[0] as Array).is_empty() or (survivors[1] as Array).is_empty()
 	var summary := {"round": campaign_round, "rounds": CAMPAIGN_ROUNDS, "field": layout, "wins": campaign_wins.duplicate(),
 		"kills": campaign_kills.duplicate(), "history": campaign_rounds.duplicate(true), "counts": counts,
 		"next_sizes": [survivors[0].size(), survivors[1].size()], "last_next": campaign_round + 1 >= CAMPAIGN_ROUNDS,
-		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result}
+		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result, "ai_picks": _ai_picks.duplicate()}
 	if over:
 		var cw := -1
 		if campaign_wins[0] != campaign_wins[1]:
@@ -362,8 +410,9 @@ func _on_round_ended(result: Dictionary) -> void:
 		hud.campaign_ended()
 	get_tree().create_timer(2.0).timeout.connect(func(): hud.show_round(summary))
 	if DisplayServer.get_name() == "headless":
-		print("round %d on %s: %s (%s) stood %d/%d ran %d/%d fell %d/%d -> next %s" % [campaign_round, layout, result["winner_name"], result["reason"],
-			counts[0]["stood"], counts[1]["stood"], counts[0]["ran"], counts[1]["ran"], counts[0]["fell"], counts[1]["fell"], str(summary["next_sizes"])])
+		print("round %d on %s: %s v %s -> %s (%s) stood %d/%d ran %d/%d fell %d/%d -> next %s, computer picks %s" % [campaign_round, layout,
+			result["presets"][0], result["presets"][1], result["winner_name"], result["reason"],
+			counts[0]["stood"], counts[1]["stood"], counts[0]["ran"], counts[1]["ran"], counts[0]["fell"], counts[1]["fell"], str(summary["next_sizes"]), str(_ai_picks)])
 		get_tree().create_timer(2.5).timeout.connect(func():
 			print("round panel: %s, %d rows" % [hud.results_title.text, hud.results_box.get_child_count()])
 			if over:

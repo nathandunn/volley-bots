@@ -44,6 +44,13 @@ var campaign_on := false
 var _type_controls := [[], []]   # chips and sliders locked while a campaign runs
 var _campaign_btn: Button
 var _fight_btn: Button
+var _top_campaign_btn: Button
+var _fight_btn0: Button
+var _head_campaign_btn: Button
+## Who picks each side's personality between campaign rounds: "you" or "computer"
+var commanders := ["you", "computer"]
+var _commander_chips := [{}, {}]
+var _persona_controls := [[], []]
 
 
 func setup(m: MatchManager) -> void:
@@ -65,6 +72,15 @@ func setup(m: MatchManager) -> void:
 	var row := HFlowContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(row)
+	_top_campaign_btn = _button("Start a campaign")
+	_accent(_top_campaign_btn)
+	_top_campaign_btn.pressed.connect(func():
+		_close_overlays()
+		if campaign_on:
+			campaign_abandoned.emit()
+		else:
+			campaign_requested.emit())
+	row.add_child(_top_campaign_btn)
 	var teams_btn := _button("Companies")
 	teams_btn.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 	row.add_child(teams_btn)
@@ -124,6 +140,25 @@ func setup(m: MatchManager) -> void:
 
 	_build_teams_overlay()
 	_build_results_overlay()
+
+
+func _accent(b: Button) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.72, 0.5, 0.12)
+	sb.corner_radius_top_left = 6
+	sb.corner_radius_top_right = 6
+	sb.corner_radius_bottom_left = 6
+	sb.corner_radius_bottom_right = 6
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	b.add_theme_stylebox_override("normal", sb)
+	var sb2 := sb.duplicate()
+	sb2.bg_color = Color(0.85, 0.6, 0.18)
+	b.add_theme_stylebox_override("hover", sb2)
+	b.add_theme_stylebox_override("pressed", sb2)
+	b.add_theme_color_override("font_color", Color(0.1, 0.08, 0.04))
+	b.add_theme_color_override("font_hover_color", Color(0.1, 0.08, 0.04))
+	b.add_theme_color_override("font_pressed_color", Color(0.1, 0.08, 0.04))
 
 
 func _button(text: String) -> Button:
@@ -186,6 +221,28 @@ func _build_teams_overlay() -> void:
 	var parts := _overlay("Companies")
 	teams_overlay = parts[0]
 	var box: VBoxContainer = parts[1]
+	var head := HFlowContainer.new()
+	box.add_child(head)
+	_head_campaign_btn = _button("Start a campaign (5 rounds)")
+	_head_campaign_btn.custom_minimum_size = Vector2(0, 46)
+	_accent(_head_campaign_btn)
+	_head_campaign_btn.pressed.connect(func():
+		_close_overlays()
+		if campaign_on:
+			campaign_abandoned.emit()
+		else:
+			campaign_requested.emit())
+	head.add_child(_head_campaign_btn)
+	var fight0 := _button("Fight one battle")
+	fight0.custom_minimum_size = Vector2(0, 46)
+	fight0.pressed.connect(func():
+		_close_overlays()
+		if campaign_on:
+			next_round_requested.emit()
+		else:
+			new_match_requested.emit())
+	head.add_child(fight0)
+	_fight_btn0 = fight0
 	var note := Label.new()
 	note.text = "Nobody takes orders. Pick what the men are (four properties on one budget) and who they are (six traits); formation, cover, volleys, charges and retreats all come out of that. Simulation: one battle, or Sim x10 for the numbers. Campaign: five rounds on five fields - the men who stand or run carry over, the dead do not; recruits fill the ranks until the last round, which is fought with what is left. Types lock once a campaign starts; personalities may change between rounds."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -272,6 +329,30 @@ func _build_team_panel(t: int) -> Control:
 	for p in SoldierType.PROPS:
 		panel.add_child(_slider_row(t, p, SoldierType.PROP_HELP[p], true))
 
+	# who picks the personality each campaign round
+	var cl := Label.new()
+	cl.text = "Commander (campaign rounds)"
+	cl.add_theme_font_size_override("font_size", 15)
+	panel.add_child(cl)
+	var crow := HFlowContainer.new()
+	panel.add_child(crow)
+	for who in ["you", "computer"]:
+		var b := Button.new()
+		b.text = "You choose" if who == "you" else "Computer chooses"
+		b.toggle_mode = true
+		b.custom_minimum_size = Vector2(0, 38)
+		b.add_theme_font_size_override("font_size", 14)
+		b.button_pressed = commanders[t] == who
+		b.pressed.connect(func(): _set_commander(t, who))
+		crow.add_child(b)
+		_commander_chips[t][who] = b
+	var chelp := Label.new()
+	chelp.text = "The computer picks a personality for each round, answering what the other side fielded and whether it won."
+	chelp.add_theme_font_size_override("font_size", 12)
+	chelp.add_theme_color_override("font_color", Color(0.7, 0.7, 0.65))
+	chelp.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel.add_child(chelp)
+
 	# personality
 	var pl := Label.new()
 	pl.text = "Personality"
@@ -313,6 +394,7 @@ func _chip_row(t: int, names: Array, is_type: bool) -> Control:
 			_type_controls[t].append(b)
 		else:
 			persona_chips[t][n] = b
+			_persona_controls[t].append(b)
 	return row
 
 
@@ -350,6 +432,7 @@ func _slider_row(t: int, key: String, help: String, is_type: bool) -> Control:
 	else:
 		persona_sliders[t][key] = s
 		persona_vals[t][key] = v
+		_persona_controls[t].append(s)
 		s.value_changed.connect(func(val: float): _on_slider(t, key, val))
 	return vb
 
@@ -588,14 +671,35 @@ func set_round(r: int, total: int, layout: String, sizes: Array) -> void:
 	round_label.visible = true
 
 
-func campaign_started() -> void:
-	campaign_on = true
+func _set_commander(t: int, who: String) -> void:
+	commanders[t] = who
+	for w in _commander_chips[t]:
+		_commander_chips[t][w].button_pressed = (w == who)
+	_apply_locks()
+
+
+## Types lock for a campaign; a computer-commanded side's personality is the computer's to set.
+func _apply_locks() -> void:
 	for t in 2:
 		for c in _type_controls[t]:
 			if c is Button:
-				c.disabled = true
+				c.disabled = campaign_on
 			if c is HSlider:
-				c.editable = false
+				c.editable = not campaign_on
+		var ai: bool = campaign_on and String(commanders[t]) == "computer"
+		for c in _persona_controls[t]:
+			if c is Button:
+				c.disabled = ai
+			if c is HSlider:
+				c.editable = not ai
+
+
+func campaign_started() -> void:
+	campaign_on = true
+	_apply_locks()
+	_top_campaign_btn.text = "Abandon campaign"
+	_head_campaign_btn.text = "Abandon campaign"
+	_fight_btn0.text = "Next round"
 	_fight_btn.text = "Next round with these personalities"
 	_campaign_btn.text = "Abandon campaign"
 
@@ -603,12 +707,10 @@ func campaign_started() -> void:
 func campaign_ended() -> void:
 	campaign_on = false
 	round_label.visible = false
-	for t in 2:
-		for c in _type_controls[t]:
-			if c is Button:
-				c.disabled = false
-			if c is HSlider:
-				c.editable = true
+	_apply_locks()
+	_top_campaign_btn.text = "Start a campaign"
+	_head_campaign_btn.text = "Start a campaign (5 rounds)"
+	_fight_btn0.text = "Fight one battle"
 	_fight_btn.text = "Fight with these companies"
 	_campaign_btn.text = "Start a campaign (5 rounds)"
 
@@ -649,8 +751,12 @@ func show_round(sm: Dictionary) -> void:
 			_stat_row(g3, "Recruits", ["none - the last round", "none - the last round"])
 		else:
 			_stat_row(g3, "Recruits", [maxi(int(ts[0]) - int(ns[0]), 0), maxi(int(ts[1]) - int(ns[1]), 0)])
+		var picks: Array = sm.get("ai_picks", ["", ""])
+		for t in 2:
+			if picks[t] != "":
+				_stat_row(g3, "%s (computer) will field" % MatchManager.TEAM_NAMES[t], [picks[t] if t == 0 else "", picks[t] if t == 1 else ""])
 		var nl := Label.new()
-		nl.text = "Types are locked. Personalities may be changed under Companies before the next round."
+		nl.text = "Types are locked. Personalities may be changed under Companies before the next round." if picks[0] == "" or picks[1] == "" else "Types are locked. Both sides are the computer's to command; watch how they answer each other."
 		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nl.add_theme_font_size_override("font_size", 13)
 		nl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.7))
@@ -660,15 +766,16 @@ func show_round(sm: Dictionary) -> void:
 	g5.columns = 5
 	g5.add_theme_constant_override("h_separation", 14)
 	results_box.add_child(g5)
-	for h in ["#", "Field", "Winner", "How", "Time"]:
+	for h in ["#", "Field", "Red / Blue fielded", "Winner", "How"]:
 		_cell(g5, h, true)
 	for b in sm["history"]:
 		_cell(g5, str(b["round"]), false)
 		_cell(g5, b["field"], false)
+		var f: Array = b.get("fielded", ["", ""])
+		_cell(g5, "%s / %s" % [f[0], f[1]], false)
 		var w: int = int(b["winner"])
 		_cell(g5, b["winner_name"], false, MatchManager.TEAM_COLORS[w].lightened(0.5) if w >= 0 else Color(0.8, 0.8, 0.8))
-		_cell(g5, b["reason"], false)
-		_cell(g5, "%d:%02d" % [int(b["duration"]) / 60, int(b["duration"]) % 60], false)
+		_cell(g5, "%s, %d:%02d" % [b["reason"], int(b["duration"]) / 60, int(b["duration"]) % 60], false)
 	var row := HFlowContainer.new()
 	results_box.add_child(row)
 	if over:
