@@ -23,6 +23,7 @@ var campaign_kills := [0, 0]
 var campaign_rounds: Array[Dictionary] = []   # one summary per round fought
 var campaign_rosters: Array = [[], []]        # survivors carried into the next round
 var _pending_campaign_result: Dictionary = {}
+var campaign_field := Field.START_FIELD   # 1..10 along the front; the winner pushes it toward the loser
 var _last_fielded := ["", ""]    # the preset each side fought the last round with
 var _ai_picks := ["", ""]
 
@@ -296,6 +297,7 @@ func _start_campaign() -> void:
 	campaign_rounds.clear()
 	campaign_rosters = [[], []]
 	manager.rosters = [[], []]
+	campaign_field = Field.START_FIELD
 	_last_fielded = ["", ""]
 	_ai_picks = ["", ""]
 	hud.campaign_started()
@@ -312,7 +314,7 @@ func _next_round() -> void:
 	if not campaign_active:
 		return
 	campaign_round += 1
-	var layout: String = Field.LAYOUT_ORDER[(campaign_round - 1) % Field.LAYOUT_ORDER.size()]
+	var layout: String = Field.LAYOUT_ORDER[campaign_field - 1]
 	if field == null or field.layout_name != layout:
 		_rebuild_field(layout)
 	var last := campaign_round >= CAMPAIGN_ROUNDS
@@ -328,7 +330,7 @@ func _next_round() -> void:
 					"seed": randi(), "kills": 0, "rounds": 0, "recruit": true})
 				next_no += 1
 		manager.rosters[t] = roster
-	hud.set_round(campaign_round, CAMPAIGN_ROUNDS, layout, [manager.rosters[0].size(), manager.rosters[1].size()])
+	hud.set_round(campaign_round, CAMPAIGN_ROUNDS, layout, [manager.rosters[0].size(), manager.rosters[1].size()], campaign_field)
 	_start_next()
 
 
@@ -387,8 +389,14 @@ func _on_round_ended(result: Dictionary) -> void:
 	for t in 2:
 		campaign_kills[t] += st["kills"][t][0] + st["kills"][t][1]
 		campaign_rosters[t] = survivors[t]
-	var layout: String = Field.LAYOUT_ORDER[(campaign_round - 1) % Field.LAYOUT_ORDER.size()]
-	campaign_rounds.append({"round": campaign_round, "field": layout, "winner": w, "winner_name": result["winner_name"],
+	var layout: String = Field.LAYOUT_ORDER[campaign_field - 1]
+	# the front moves: the winner pushes the fight one field into the loser's country
+	var fought_on := campaign_field
+	if w == 0:
+		campaign_field = mini(campaign_field + 1, Field.LAYOUT_ORDER.size())
+	elif w == 1:
+		campaign_field = maxi(campaign_field - 1, 1)
+	campaign_rounds.append({"round": campaign_round, "field": "%d. %s" % [fought_on, layout], "winner": w, "winner_name": result["winner_name"],
 		"reason": result["reason"], "duration": result["duration"], "counts": counts,
 		"fielded": [result["presets"][0], result["presets"][1]]})
 	_last_fielded = [result["presets"][0], result["presets"][1]]
@@ -397,14 +405,14 @@ func _on_round_ended(result: Dictionary) -> void:
 		if hud.commanders[t] == "computer":
 			_ai_pick(t, false)
 	var over: bool = campaign_round >= CAMPAIGN_ROUNDS or (survivors[0] as Array).is_empty() or (survivors[1] as Array).is_empty()
+	var next_layout: String = Field.LAYOUT_ORDER[campaign_field - 1]
 	var summary := {"round": campaign_round, "rounds": CAMPAIGN_ROUNDS, "field": layout,
-		"next_field": Field.LAYOUT_ORDER[campaign_round % Field.LAYOUT_ORDER.size()], "wins": campaign_wins.duplicate(),
+		"next_field": next_layout, "next_field_no": campaign_field, "wins": campaign_wins.duplicate(),
 		"kills": campaign_kills.duplicate(), "history": campaign_rounds.duplicate(true), "counts": counts,
 		"next_sizes": [survivors[0].size(), survivors[1].size()], "last_next": campaign_round + 1 >= CAMPAIGN_ROUNDS,
 		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result, "ai_picks": _ai_picks.duplicate()}
 	if not over:
 		# the next battlefield goes up now, so it can be surveyed before personalities are chosen
-		var next_layout: String = Field.LAYOUT_ORDER[campaign_round % Field.LAYOUT_ORDER.size()]
 		_rebuild_field(next_layout)
 		if cam != null:
 			cam.refit()

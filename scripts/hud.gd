@@ -47,6 +47,8 @@ var _fight_btn: Button
 var _top_campaign_btn: Button
 var _fight_btn0: Button
 var _setup_note: Label
+var _top_fight_btn: Button
+var _batch_btn: Button
 var _head_campaign_btn: Button
 ## Who picks each side's personality between campaign rounds: "you" or "computer"
 var commanders := ["you", "computer"]
@@ -87,8 +89,14 @@ func setup(m: MatchManager) -> void:
 	teams_btn.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 	row.add_child(teams_btn)
 	var fight := _button("New battle")
-	fight.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
+	fight.pressed.connect(func():
+		_close_overlays()
+		if campaign_on:
+			next_round_requested.emit()
+		else:
+			new_match_requested.emit())
 	row.add_child(fight)
+	_top_fight_btn = fight
 	for s in [1.0, 2.0, 4.0]:
 		var b := _button("%d×" % int(s))
 		b.toggle_mode = true
@@ -108,6 +116,7 @@ func setup(m: MatchManager) -> void:
 	var batch := _button("Sim ×%d" % BATCH_N)
 	batch.pressed.connect(func(): _close_overlays(); batch_requested.emit(BATCH_N))
 	row.add_child(batch)
+	_batch_btn = batch
 
 	status_label = Label.new()
 	status_label.add_theme_font_size_override("font_size", 15)
@@ -291,7 +300,13 @@ func _build_teams_overlay() -> void:
 	box.add_child(cols)
 	for t in 2:
 		cols.add_child(_build_team_panel(t))
-	_section(box, "The campaign's five fields, in order")
+	_section(box, "The front: ten fields in a line")
+	var fnote := Label.new()
+	fnote.text = "A campaign opens on field %d. Each round's winner pushes the fight one field into the loser's country - Red toward 10, Blue toward 1 - so five straight wins march the whole way." % Field.START_FIELD
+	fnote.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	fnote.add_theme_font_size_override("font_size", 13)
+	fnote.add_theme_color_override("font_color", Color(0.75, 0.75, 0.7))
+	box.add_child(fnote)
 	for i in Field.LAYOUT_ORDER.size():
 		var n: String = Field.LAYOUT_ORDER[i]
 		var fl := Label.new()
@@ -725,13 +740,10 @@ func batch_progress(i: int, n: int) -> void:
 		status_label.text = _batch_text
 
 
-func set_round(r: int, total: int, layout: String, sizes: Array) -> void:
-	var later := PackedStringArray()
-	for i in range(r, total):
-		later.append(Field.LAYOUT_ORDER[i % Field.LAYOUT_ORDER.size()])
-	_round_text = "Round %d of %d - %s · Red %d men, Blue %d men" % [r, total, layout, sizes[0], sizes[1]]
-	if later.size() > 0:
-		_round_text += " · then " + ", ".join(later)
+func set_round(r: int, total: int, layout: String, sizes: Array, field_no: int = 0) -> void:
+	_round_text = "Round %d of %d - field %d of %d, %s · Red %d men, Blue %d men" % [r, total, field_no, Field.LAYOUT_ORDER.size(), layout, sizes[0], sizes[1]]
+	if field_no > 1 and field_no < Field.LAYOUT_ORDER.size():
+		_round_text += " · a Red win moves on to %s, a Blue win back to %s" % [Field.LAYOUT_ORDER[field_no], Field.LAYOUT_ORDER[field_no - 2]]
 	round_label.text = _round_text
 	round_label.visible = true
 
@@ -775,6 +787,8 @@ func campaign_started() -> void:
 	_top_campaign_btn.text = "Abandon campaign"
 	_head_campaign_btn.text = "Abandon campaign"
 	_fight_btn0.text = "Next round"
+	_top_fight_btn.text = "Next round"
+	_batch_btn.visible = false
 	_fight_btn.text = "Next round with these personalities"
 	_campaign_btn.text = "Abandon campaign"
 
@@ -786,6 +800,8 @@ func campaign_ended() -> void:
 	_top_campaign_btn.text = "Start a campaign"
 	_head_campaign_btn.text = "Start a campaign (5 rounds)"
 	_fight_btn0.text = "Fight one battle"
+	_top_fight_btn.text = "New battle"
+	_batch_btn.visible = true
 	_fight_btn.text = "Fight with these companies"
 	_campaign_btn.text = "Start a campaign (5 rounds)"
 
@@ -817,7 +833,7 @@ func show_round(sm: Dictionary) -> void:
 	_stat_row(g2, "Hit rate", ["%d%%" % int(float(st["hits"][0]) / maxf(float(st["shots"][0]), 1.0) * 100.0), "%d%%" % int(float(st["hits"][1]) / maxf(float(st["shots"][1]), 1.0) * 100.0)])
 	_stat_row(g2, "Killed by ball / bayonet", ["%d / %d" % [st["kills"][0][0], st["kills"][0][1]], "%d / %d" % [st["kills"][1][0], st["kills"][1][1]]])
 	if not over:
-		_section(results_box, "Next round: %s" % sm.get("next_field", ""))
+		_section(results_box, "Next round: field %d of %d, %s" % [int(sm.get("next_field_no", 0)), Field.LAYOUT_ORDER.size(), sm.get("next_field", "")])
 		var fl := Label.new()
 		fl.text = "%s  (It is on the map now - close this panel and look it over before choosing personalities.)" % Field.LAYOUT_HELP.get(sm.get("next_field", ""), "")
 		fl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

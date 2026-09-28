@@ -50,6 +50,37 @@ const LAYOUTS := {
 		[-1.0, 0.0, 0.6, 9.0, 1.0, "wall"], [-18.0, 18.0, 0.4, 8.0, 1.1, "fence"], [18.0, -20.0, 0.4, 8.0, 1.1, "fence"],
 		[-22.0, 30.0, 1.0, 1.0, 5.0, "tree"], [22.0, -32.0, 1.0, 1.0, 5.0, "tree"],
 	],
+	"Hedgerows": [
+		[-16.0, -20.0, 14.0, 0.4, 1.1, "fence"], [12.0, -12.0, 14.0, 0.4, 1.1, "fence"],
+		[-10.0, -2.0, 16.0, 0.4, 1.1, "fence"], [14.0, 6.0, 12.0, 0.4, 1.1, "fence"],
+		[-14.0, 14.0, 14.0, 0.4, 1.1, "fence"], [10.0, 22.0, 14.0, 0.4, 1.1, "fence"],
+		[-22.0, 6.0, 1.0, 1.0, 5.0, "tree"], [22.0, -22.0, 1.0, 1.0, 5.0, "tree"], [0.0, 30.0, 1.0, 1.0, 5.0, "tree"],
+	],
+	"Churchyard": [
+		[0.0, 0.0, 6.0, 8.0, 3.2, "house"],
+		[-9.0, -9.0, 12.0, 0.6, 1.0, "wall"], [9.0, -9.0, 12.0, 0.6, 1.0, "wall"],
+		[-9.0, 9.0, 12.0, 0.6, 1.0, "wall"], [9.0, 9.0, 12.0, 0.6, 1.0, "wall"],
+		[-15.0, 0.0, 0.6, 12.0, 1.0, "wall"], [15.0, 0.0, 0.6, 12.0, 1.0, "wall"],
+		[-20.0, -24.0, 1.0, 1.0, 5.0, "tree"], [20.0, 24.0, 1.0, 1.0, 5.0, "tree"], [-22.0, 20.0, 2.0, 1.8, 1.4, "boulder"], [22.0, -20.0, 2.0, 1.8, 1.4, "boulder"],
+	],
+	"Orchard": [
+		[-18.0, -18.0, 1.0, 1.0, 5.0, "tree"], [-6.0, -18.0, 1.0, 1.0, 5.0, "tree"], [6.0, -18.0, 1.0, 1.0, 5.0, "tree"], [18.0, -18.0, 1.0, 1.0, 5.0, "tree"],
+		[-12.0, -6.0, 1.0, 1.0, 5.0, "tree"], [0.0, -6.0, 1.0, 1.0, 5.0, "tree"], [12.0, -6.0, 1.0, 1.0, 5.0, "tree"],
+		[-18.0, 6.0, 1.0, 1.0, 5.0, "tree"], [-6.0, 6.0, 1.0, 1.0, 5.0, "tree"], [6.0, 6.0, 1.0, 1.0, 5.0, "tree"], [18.0, 6.0, 1.0, 1.0, 5.0, "tree"],
+		[-12.0, 18.0, 1.0, 1.0, 5.0, "tree"], [0.0, 18.0, 1.0, 1.0, 5.0, "tree"], [12.0, 18.0, 1.0, 1.0, 5.0, "tree"],
+		[-22.0, 0.0, 0.6, 10.0, 1.0, "wall"], [22.0, 0.0, 0.6, 10.0, 1.0, "wall"],
+	],
+	"Crossroads": [
+		[0.0, 0.0, 0.6, 30.0, 1.0, "wall"], [0.0, 0.0, 30.0, 0.6, 1.0, "wall"],
+		[10.0, -10.0, 4.5, 4.0, 2.6, "house"], [-10.0, 10.0, 4.5, 4.0, 2.6, "house"],
+		[-18.0, -20.0, 0.4, 10.0, 1.1, "fence"], [18.0, 20.0, 0.4, 10.0, 1.1, "fence"],
+		[-20.0, 26.0, 1.0, 1.0, 5.0, "tree"], [20.0, -26.0, 1.0, 1.0, 5.0, "tree"],
+	],
+	"Ridge": [
+		[-16.0, 0.0, 18.0, 0.6, 1.0, "wall"], [14.0, 0.0, 18.0, 0.6, 1.0, "wall"],
+		[-8.0, -14.0, 2.4, 2.0, 1.6, "boulder"], [10.0, -16.0, 2.2, 2.0, 1.5, "boulder"], [0.0, 14.0, 2.4, 2.0, 1.6, "boulder"], [-18.0, 16.0, 2.0, 1.8, 1.4, "boulder"],
+		[22.0, 10.0, 1.0, 1.0, 5.0, "tree"], [-22.0, -10.0, 1.0, 1.0, 5.0, "tree"], [4.0, -30.0, 1.0, 1.0, 5.0, "tree"], [-4.0, 30.0, 1.0, 1.0, 5.0, "tree"],
+	],
 	"Sunken Road": [
 		[-14.0, -3.0, 24.0, 0.6, 1.0, "wall"], [16.0, -3.0, 16.0, 0.6, 1.0, "wall"],
 		[-16.0, 3.0, 16.0, 0.6, 1.0, "wall"], [14.0, 3.0, 24.0, 0.6, 1.0, "wall"],
@@ -58,13 +89,22 @@ const LAYOUTS := {
 		[4.0, -34.0, 1.0, 1.0, 5.0, "tree"], [-4.0, 34.0, 1.0, 1.0, 5.0, "tree"], [24.0, -30.0, 1.0, 1.0, 5.0, "tree"],
 	],
 }
-const LAYOUT_ORDER: Array[String] = ["Open Plain", "Walled Farm", "Woodland", "Village", "Sunken Road"]
+## The front: ten fields in a line. A campaign opens on field 5; each round's winner pushes the
+## fight one field into the loser's country (Red toward 10, Blue toward 1).
+const LAYOUT_ORDER: Array[String] = ["Hedgerows", "Churchyard", "Sunken Road", "Woodland", "Open Plain",
+	"Walled Farm", "Orchard", "Village", "Crossroads", "Ridge"]
+const START_FIELD := 5
 const LAYOUT_HELP := {
 	"Open Plain": "Two boulders, a fence and two trees. Nowhere to hide: volleys and nerve decide it.",
 	"Walled Farm": "Stone walls and fences across both halves, a cottage in the middle. Cover for whoever gets to it first.",
 	"Woodland": "Trees everywhere and a few boulders. Lines break up; skirmishers and the bayonet do well.",
 	"Village": "Six houses and walls. Short lines of sight, fighting from doorways and corners.",
 	"Sunken Road": "Long walls either side of a road across the middle. Whoever holds the road fires from cover.",
+	"Hedgerows": "Six fence rows staggered across the field. Every line finds a hedge; nobody keeps a straight line for long.",
+	"Churchyard": "A stone church ringed by low walls. A fortress for whoever gets inside first.",
+	"Orchard": "Trees in rows with walls at the flanks. Broken sight lines; cover everywhere, none of it good.",
+	"Crossroads": "Two walls crossing the middle, a house on each diagonal. Four quarters, each a fight of its own.",
+	"Ridge": "A broken wall along the crest and boulders below it. The high line holds the fire.",
 }
 
 var layout_name := "Walled Farm"
