@@ -1,0 +1,117 @@
+# Volley Bots — a line of twenty, single-shot rifles and bayonets
+
+AI battle in Godot 4 (3D, web export). Two companies of up to **20 men a side** meet on a
+farm field with walls, fences, a ruined cottage and a few trees. Mid-19th-century kit: a
+muzzle-loading rifle (one shot, ~9 s to reload, poor at range), a bayonet, two legs and a
+temper. Nobody takes orders — formation, spacing, cover, when to fire, whether to fire
+together or go in with the bayonet, and when to fall back all come out of the men's
+personalities.
+
+Part of the Precog sim suite (sibling of Rock Bots / Legion Bots / Dodgeball Bots).
+
+## What you choose
+
+**Type** — four properties that always add up to 1, so a strength is paid for somewhere else:
+
+| property | what it buys |
+|---|---|
+| run | walking and running speed |
+| melee | bayonet hit chance, parry and damage |
+| accuracy | musketry hit chance at range, and a quicker reload |
+| stamina | how long he can run and stay steady; recovers faster |
+
+Presets: Even, Marksman, Grenadier, Runner, Ironside.
+
+**Personality** — six traits, 0..1:
+
+| trait | drives |
+|---|---|
+| aggression | closing the distance, and the bayonet charge |
+| discipline | firing on the sergeant's volley and keeping the line, rather than acting alone |
+| cohesion | how tightly the line stands (0.8 m shoulder to shoulder → ~4 m skirmish order) |
+| cover | looking for a wall, fence or tree to fire from (kneeling behind it) |
+| patience | holding fire until the enemy is close (75 m → 25 m) |
+| nerve | standing under losses; low nerve breaks and runs for the rear |
+
+Presets: Regulars, Skirmishers, Shock, Militia, Veterans, Balanced, Random. Every man gets a
+little jitter on both, so twenty of a preset are twenty different men.
+
+## How the line thinks
+
+There is a **sergeant** on each side: simply the steadiest man alive (highest discipline +
+nerve). Every half second he publishes what the line is doing — where it stands (`line_z`),
+how far apart (`spacing`, from the men's mean cohesion), the mode (`advance` / `hold` /
+`charge` / `fallback` / `at_will`) and whether he has just called a **volley**. His "orders"
+are a 50/50 blend of his own traits and the line's mean, so one iron sergeant steadies a
+company of militia — a little.
+
+Each man then decides, every 0.2 s, how much of that to follow:
+
+- **Formation** — a disciplined, cohesive man stands on his slot in the line; a loose one
+  drifts off it by up to a couple of metres. Slots are handed out left-to-right each tick so
+  the line never crosses itself.
+- **Cover** — a man whose `cover` outweighs his `discipline` leaves the line for the nearest
+  wall or fence facing the enemy (within 4–16 m of his slot) and kneels there; a cover-minded
+  sergeant halts the whole line on a wall row if it is within range of the enemy.
+- **Firing** — a disciplined man waits for the volley (a few are slow on the word); the rest
+  fire at will once the enemy is inside their own patience range. Everyone fires at point
+  blank. A man with a friend in his line of fire holds if he is disciplined, and may shoot
+  him if he is not. A volley frightens the men around the mark far more than the same balls
+  one at a time (`volley_pressure`) — that is what volleys are for.
+- **Fire and fall back** — a man with low aggression and middling nerve who has just fired
+  with the enemy inside 22 m backs off ten metres to reload.
+- **The charge** — the sergeant calls it when the enemy is inside his charge range
+  (12 + 32 × aggression m), the volley has just gone or most rifles are empty, and the odds
+  are not against him. Men with aggression or discipline follow; the rest keep firing. A man
+  with blood up charges on his own at 10 m; an empty rifle and an enemy at 7 m is a bayonet
+  fight whatever his traits. Charging men keep together (nobody runs 3 m ahead of his mates),
+  and a line coming on with the bayonet frightens the men it is coming at.
+- **Falling back and breaking** — losses above the sergeant's break point
+  (25 % + 50 % × nerve) with courage low send the line back 22 m to rally and reload. Each
+  man's own courage is his nerve less losses, wounds, nearby deaths and being outnumbered;
+  below 0.1 he runs for the rear, and off the field if nothing steadies him.
+
+The fight ends when one side has nobody left standing in the line.
+
+## The rifle
+
+Hit chance = 0.28 × accuracy × range (flat to 20 m, down to 12 % of that at 80 m) × cover
+(0.45 behind a low wall, 0.3 at a tall piece's edge, 0 through a house or a tree) × 0.7 if the
+target is running × 0.75 if the shooter is winded. A hit kills outright with chance
+0.35 + 0.3 × accuracy skill, otherwise wounds (−45 HP of 100, and he is slower and shakier).
+A miss carries on: anyone standing near the ball's line beyond the target has a 35 % chance
+of catching it, either side. Nobody reloads at the run.
+
+The bayonet: 0.6 × own melee / (0.5 + 0.6 × theirs), ×1.3 with the weight of a charge behind
+it, ×1.25 against a man caught reloading; 45 × melee damage per thrust, one every ~0.9 s.
+
+## The camera
+
+Until you zoom by hand the rig keeps the **whole field in frame at whatever angle you
+choose** — the distance is solved every frame from the field's corners — so the first thing
+you do is pick your vantage, not hunt for the edges. Drag to turn and tilt, wheel or pinch to
+zoom; *Fit view* puts the auto-fit back.
+
+## Running it
+
+- Browser: `?size=N` (1–20, asked on first load), `?red=Shock&blue=Regulars`,
+  `?redtype=Marksman&bluetype=Grenadier`.
+- Headless batch: `godot --headless --path . -- --sim=20 --red=Regulars --blue=Skirmishers
+  --seed=1 --cap=400` prints a battle a line and a `SUMMARY {...}` JSON.
+- Build: `./build.sh` (Godot 4.7.2 + web templates) writes `dist/`, boots the pack headless
+  to prove it, gzips the big three. `Dockerfile` + `nginx.conf` + `headers.caddy` are the
+  same shape as Legion Bots.
+
+## Balance, v0 (4-battle seeds, Even types unless said)
+
+| red | blue | result |
+|---|---|---|
+| Regulars | Skirmishers | 1–3, skirmishers in cover shoot 20 % to the line's 8 % |
+| Shock | Regulars | 2–2, decided in the bayonet fight |
+| Regulars | Militia | 4–0, the militia break under volleys (17 of 20 ran) |
+| Militia | Veterans | 3–1 — veterans are too patient in the open (range 35 m) |
+| Regulars/Marksman | Regulars/Grenadier | 4–0 in a firefight, as it should be |
+| Shock/Grenadier | Shock/Runner | 4–0 in a melee, as it should be |
+
+Battles run 35–120 s at 20 a side. Not yet calibrated; the levers are the constants at the
+top of `soldier.gd` and the sergeant in `match_manager.gd`.
