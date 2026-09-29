@@ -9,6 +9,7 @@ extends Node3D
 const HALF_X := 28.0
 const HALF_Z := 50.0
 const LAYER_WORLD := 1
+const LAYER_GROUND := 4   # terrain and rim: ragdolls only; the living ride height_at()
 const GRID := 1.0   # metres between terrain vertices
 
 ## The hills of each layout: x, z, radius_x, radius_z, height (negative digs a hollow).
@@ -342,7 +343,7 @@ func _build_terrain() -> void:
 	add_child(mi)
 
 	var body := StaticBody3D.new()
-	body.collision_layer = 4   # the ground is for ragdolls; the men ride height_at() and never touch it
+	body.collision_layer = LAYER_GROUND   # the ground is for ragdolls; the men ride height_at() and never touch it
 	body.collision_mask = 0
 	var cs := CollisionShape3D.new()
 	var hm := HeightMapShape3D.new()
@@ -353,6 +354,8 @@ func _build_terrain() -> void:
 	cs.scale = Vector3(GRID, 1.0, GRID)
 	body.add_child(cs)
 	add_child(body)
+
+	_build_rim(nx, nz, x0, z0, heights)
 
 	# deployment lines at each end, laid on the ground
 	var line_mat := StandardMaterial3D.new()
@@ -365,6 +368,79 @@ func _build_terrain() -> void:
 			var lx := k * 2.0
 			l.position = Vector3(lx, height_at(lx, zz) + 0.03, zz)
 			add_child(l)
+
+
+## A glass rim round the edge of the ground, so a body thrown by a volley stops at the edge
+## of the world rather than sliding off it. Faint enough to see through; it rises with the
+## ground under it, so a hill that runs off the edge is walled too.
+func _build_rim(nx: int, nz: int, x0: float, z0: float, heights: PackedFloat32Array) -> void:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.75, 0.88, 1.0, 0.16)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var edge_mat := StandardMaterial3D.new()
+	edge_mat.albedo_color = Color(0.85, 0.93, 1.0, 0.45)
+	edge_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	edge_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var x1 := x0 + (nx - 1) * GRID
+	var z1 := z0 + (nz - 1) * GRID
+	const RISE := 1.6
+	const T := 0.3
+	# four sides: each a strip of panels following the ground height along that edge
+	var sides := [
+		[Vector2(x0, z0), Vector2(x1, z0)], [Vector2(x0, z1), Vector2(x1, z1)],
+		[Vector2(x0, z0), Vector2(x0, z1)], [Vector2(x1, z0), Vector2(x1, z1)],
+	]
+	var seg := 4.0
+	for sd in sides:
+		var a: Vector2 = sd[0]
+		var b: Vector2 = sd[1]
+		var length := a.distance_to(b)
+		var n := int(ceil(length / seg))
+		var along_x: bool = absf(b.x - a.x) > 0.01
+		for k in n:
+			var t0 := float(k) / n
+			var t1 := float(k + 1) / n
+			var pa := a.lerp(b, t0)
+			var pb := a.lerp(b, t1)
+			var mid := (pa + pb) * 0.5
+			var g := maxf(height_at(pa.x, pa.y), maxf(height_at(pb.x, pb.y), height_at(mid.x, mid.y)))
+			var h := g + RISE + 1.0   # from a metre below the ground to RISE above it
+			var size := Vector3(pa.distance_to(pb) + 0.02 if along_x else T, h, T if along_x else pa.distance_to(pb) + 0.02)
+			var body := StaticBody3D.new()
+			body.collision_layer = LAYER_GROUND
+			body.collision_mask = 0
+			var cs := CollisionShape3D.new()
+			var sh := BoxShape3D.new()
+			sh.size = size
+			cs.shape = sh
+			body.add_child(cs)
+			var mi := MeshInstance3D.new()
+			mi.mesh = _box_mesh(size)
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			body.add_child(mi)
+			# a brighter lip along the top so the rim reads as an edge
+			var lip := MeshInstance3D.new()
+			lip.mesh = _box_mesh(Vector3(size.x, 0.06, size.z))
+			lip.material_override = edge_mat
+			lip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			lip.position = Vector3(0, h * 0.5, 0)
+			body.add_child(lip)
+			body.position = Vector3(mid.x, -1.0 + h * 0.5, mid.y)
+			add_child(body)
+	# and a floor under everything, in case anything ever gets past the ground
+	var net := StaticBody3D.new()
+	net.collision_layer = LAYER_GROUND
+	net.collision_mask = 0
+	var ncs := CollisionShape3D.new()
+	var nsh := BoxShape3D.new()
+	nsh.size = Vector3(x1 - x0 + 4.0, 1.0, z1 - z0 + 4.0)
+	ncs.shape = nsh
+	net.add_child(ncs)
+	net.position = Vector3(0, -4.0, 0)
+	add_child(net)
 
 
 ## Firing positions along each face of a piece: a man's width back from it, one every 1.3 m.

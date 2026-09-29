@@ -100,12 +100,28 @@ the fight inside is in plain view.
 
 ## The rifle
 
-Hit chance = 0.28 × accuracy × range (flat to 20 m, down to 12 % of that at 80 m) × cover
-(0.45 behind a low wall, 0.3 at a tall piece's edge, 0 through a house or a tree) × 0.7 if the
-target is running × 0.75 if the shooter is winded. A hit kills outright with chance
-0.35 + 0.3 × accuracy skill, otherwise wounds (−45 HP of 100, and he is slower and shakier).
-A miss carries on: anyone standing near the ball's line beyond the target has a 35 % chance
-of catching it, either side. Nobody reloads at the run.
+The shot is flown, not rolled (`ballistics.gd`). The .58 rifle-musket throws a Minié ball at
+340 m/s that slows in the air (v = V0·e^(-0.0012·x)) and falls under gravity the whole way.
+It is sighted for 100 yards, so the ball rides 8-10 cm above the line of sight out to 50 m,
+crosses it at 91 m and drops away beyond (11 cm low at 110 m, a metre low at 200 m) - a miss
+keeps falling until it meets a man or the ground, and the tracer draws the arc.
+
+Aim is an angular spread: **a trained marksman groups at 1.8 mrad on the range, a raw recruit
+at 7** - the accuracy slider runs between them. At the good end that reproduces the 1860
+comparative firings (US Ordnance, in Fuller's *The Rifled Musket*): 94 % at 100 yd, 64 % at
+200, 43 % at 300 on a 2 ft wide target, against the recorded 96 %, 64-82 %, 46-58 %. On a
+man, on the range: marksman 99 % at 50 m / 84 % at 100 m; even 84 / 50; recruit 49 / 22.
+
+Battle is not the range: every spread is **6.5×** wider (smoke, noise, haste - armies that
+shot well at Hythe still fired hundreds of rounds per man hit), and wider again for firing on
+the move (×2 walking, ×3.3 running), winded (×1.6), worn out (×1.3), wounded (×1.25), afraid
+(up to ×1.8), on the word of a volley (×1.1); narrower kneeling at a wall (×0.8) and looking
+down on the enemy (to ×0.8). Frightened men shoot high. A moving target has to be led, and
+the lead is guessed. The ball either meets the silhouette (0.5 m wide, 1.75 m standing, 1.2
+kneeling) or it does not; cover between takes a share of what would have hit (a low wall
+0.45, a tall piece's edge 0.3, a crest 0.5). A hit in the body or head kills 62 % of the time,
+in the legs 20 %; otherwise a wound (−45 HP of 100, slower and shakier). A miss flies on and
+hits the first man, either side, whose body is where the ball is. Nobody reloads at the run.
 
 The bayonet: 0.6 × own melee / (0.5 + 0.6 × theirs), ×1.3 with the weight of a charge behind
 it, ×1.25 against a man caught reloading; 45 × melee damage per thrust, one every ~0.9 s.

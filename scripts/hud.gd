@@ -32,6 +32,7 @@ var type_vals := [{}, {}]
 var persona_chips := [{}, {}]
 var type_chips := [{}, {}]
 var help_labels := [{}, {}]
+var _acc_help := [null, null]   # the accuracy slider's line, rewritten with the rifle's numbers
 var _updating := false
 var _tick := 0.0
 var _root: Control
@@ -59,6 +60,11 @@ var _persona_controls := [[], []]
 
 func setup(m: MatchManager) -> void:
 	manager = m
+	# web manners: everything you can press or drag shows the pointing hand, and the open field
+	# (which you grab to turn the view) shows the move cross. Hooked on the tree so panels
+	# built later - results, round summaries - get it too.
+	Input.set_default_cursor_shape(Input.CURSOR_MOVE)
+	get_tree().node_added.connect(_cursor_for)
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -229,6 +235,14 @@ func _style(b: Button, kind: String) -> void:
 	b.add_theme_color_override("font_color", fg)
 	b.add_theme_color_override("font_hover_color", fg)
 	b.add_theme_color_override("font_pressed_color", fg)
+
+
+func _cursor_for(n: Node) -> void:
+	if n is BaseButton or n is Slider:
+		(n as Control).mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	elif n is ScrollContainer or n is PanelContainer or n is Label:
+		# reading, not grabbing the field: the plain arrow over the panels
+		(n as Control).mouse_default_cursor_shape = Control.CURSOR_ARROW
 
 
 func _button(text: String) -> Button:
@@ -537,6 +551,8 @@ func _slider_row(t: int, key: String, help: String, is_type: bool) -> Control:
 	h.add_theme_color_override("font_color", Color(0.6, 0.6, 0.58))
 	h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(h)
+	if is_type and key == "accuracy":
+		_acc_help[t] = h
 	if is_type:
 		type_sliders[t][key] = s
 		type_vals[t][key] = v
@@ -598,6 +614,11 @@ func _refresh_sliders(t: int) -> void:
 		persona_chips[t][n].button_pressed = (n == pn)
 	for n in type_chips[t]:
 		type_chips[t][n].button_pressed = (n == tn)
+	if _acc_help[t] != null:
+		var sk: float = manager.team_types[t].skill("accuracy")
+		_acc_help[t].text = "Musketry and reload. On the range he hits a man %d%% at 50 m, %d%% at 100 m (spread %.1f mrad; a trained marksman 99/84, a raw recruit 49/22). In the smoke of a battle, standing: %d%% at 20 m, %d%% at 50 m." % [
+			int(round(100.0 * Ballistics.p_range(sk, 50.0))), int(round(100.0 * Ballistics.p_range(sk, 100.0))),
+			Ballistics.sigma_range(sk), int(round(100.0 * Ballistics.p_range(sk, 20.0, true))), int(round(100.0 * Ballistics.p_range(sk, 50.0, true)))]
 	if help_labels[t].has("persona"):
 		help_labels[t]["persona"].text = Personality.PRESET_HELP.get(pn, "Custom blend - the sliders are yours")
 		help_labels[t]["type"].text = SoldierType.TYPE_HELP.get(tn, "Custom build - the sliders are yours")

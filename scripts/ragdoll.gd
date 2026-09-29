@@ -4,7 +4,13 @@ extends Node3D
 ## Shares the robot's materials so hit-flashes and team colours carry over.
 
 const LAYER_WORLD := 1
+const LAYER_GROUND := 4     # the terrain and the rim: only the dead touch them
 const LAYER_RAGDOLL := 16
+const SETTLE_TIME := 6.0     # after this long a body is left where it lies
+
+var field: Field = null   # set by the soldier: the ground the body must never go through
+var _age := 0.0
+var _settled := false
 
 # name, shape kind, size, local position, joint anchor (local), mass
 const PARTS := [
@@ -27,9 +33,14 @@ func build(pose: Transform3D, main_mat: Material, dark_mat: Material, eye_mat: M
 		rb.name = p[0]
 		rb.mass = p[5]
 		rb.collision_layer = LAYER_RAGDOLL
-		rb.collision_mask = LAYER_WORLD | LAYER_RAGDOLL
+		rb.collision_mask = LAYER_WORLD | LAYER_GROUND | LAYER_RAGDOLL
 		rb.linear_damp = 0.6
 		rb.angular_damp = 1.2
+		rb.continuous_cd = true   # a fast-falling limb must not tunnel through the ground
+		var pm := PhysicsMaterial.new()
+		pm.friction = 1.0
+		pm.rough = true           # grass holds a body; nobody tobogans down the ridge
+		rb.physics_material_override = pm
 		rb.can_sleep = true
 		var cs := CollisionShape3D.new()
 		var mi := MeshInstance3D.new()
@@ -75,6 +86,36 @@ func build(pose: Transform3D, main_mat: Material, dark_mat: Material, eye_mat: M
 		j.node_a = j.get_path_to(torso)
 		j.node_b = j.get_path_to(bodies[p[0]])
 		j.exclude_nodes_from_collision = true
+
+
+func _physics_process(delta: float) -> void:
+	if _settled or torso == null:
+		return
+	_age += delta
+	# belt and braces: whatever the physics thinks, no part of a body is ever below the grass
+	if field != null:
+		for k in bodies:
+			var rb: RigidBody3D = bodies[k]
+			var g := field.height_at(rb.global_position.x, rb.global_position.z)
+			if rb.global_position.y < g + 0.05:
+				rb.global_position.y = g + 0.12
+				if rb.linear_velocity.y < 0.0:
+					rb.linear_velocity.y = 0.0
+	if _age > SETTLE_TIME or torso.global_position.y < -6.0:
+		_settle()
+
+
+func _settle() -> void:
+	_settled = true
+	for k in bodies:
+		var rb: RigidBody3D = bodies[k]
+		var floor_y := field.height_at(rb.global_position.x, rb.global_position.z) if field != null else 0.0
+		if rb.global_position.y < floor_y + 0.05:
+			rb.global_position.y = floor_y + 0.12
+		rb.linear_velocity = Vector3.ZERO
+		rb.angular_velocity = Vector3.ZERO
+		rb.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+		rb.freeze = true
 
 
 func shove(impulse: Vector3) -> void:

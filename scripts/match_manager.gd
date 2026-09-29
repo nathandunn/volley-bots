@@ -240,7 +240,7 @@ func stray_victim(s: Soldier, from: Vector3, to: Vector3) -> Soldier:
 		var ao := o.global_position - from
 		ao.y = 0.0
 		var along := ao.dot(dir)
-		if along < len + 0.5 or along > Soldier.MAX_RANGE + 10.0:
+		if along < len + 0.5 or along > Soldier.MAX_RANGE + 40.0:
 			continue
 		var side := (ao - dir * along).length()
 		if side < 0.7 and along < best_along:

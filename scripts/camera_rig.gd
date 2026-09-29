@@ -102,6 +102,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
 			_dragging = event.pressed
+			# the field is grabbed and turned: a grab hand while dragging, the move cross otherwise
+			Input.set_default_cursor_shape(Input.CURSOR_DRAG if _dragging else Input.CURSOR_MOVE)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			dist *= 0.9
 			fit_all = false

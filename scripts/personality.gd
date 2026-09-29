@@ -10,7 +10,7 @@ const TRAITS: Array[String] = ["aggression", "discipline", "cohesion", "cover", 
 const TRAIT_HELP := {
 	"aggression": "Close the distance; charge with the bayonet",
 	"discipline": "Fire on the sergeant's volley and keep the line, rather than act alone",
-	"cohesion": "How tightly the line stands (loose skirmish → shoulder to shoulder)",
+	"cohesion": "How tightly the line stands (from loose skirmish order to shoulder to shoulder)",
 	"cover": "Look for walls, fences and trees to fire from",
 	"patience": "Hold fire until the enemy is close",
 	"nerve": "Stand under losses; low nerve breaks and runs",

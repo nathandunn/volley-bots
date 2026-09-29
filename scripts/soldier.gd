@@ -16,11 +16,9 @@ const MAX_HP := 100.0
 const WALK := 1.7
 const RUN := 4.6
 const RELOAD := 9.0            # seconds, an even type; ~3 rounds a minute for a rifled musket
-const MAX_RANGE := 80.0
+const MAX_RANGE := 100.0
 const POINT_BLANK := 12.0
 const STEEL_RANGE := 3.0        # an enemy this close is a bayonet matter; no one shoots with a blade coming in
-const BASE_HIT := 0.28          # p(hit) at short range for an even type, still target, clear (musketry was poor)
-const KILL_BASE := 0.35         # p(a hit kills outright) at an even accuracy
 const WOUND := 45.0
 const BAYONET_REACH := 1.9
 const BAYONET_COOLDOWN := 0.9
@@ -50,7 +48,6 @@ var slot := 0
 var walk_speed := WALK
 var run_speed := RUN
 var reload_time := RELOAD
-var hit_mult := 1.0
 var melee_mult := 1.0
 var stamina_max := STAMINA_MAX
 var regen_mult := 1.0
@@ -147,7 +144,6 @@ func apply_type() -> void:
 	walk_speed = WALK * (0.8 + 0.4 * st.skill("run"))
 	run_speed = RUN * run_m
 	reload_time = RELOAD / (0.8 + 0.4 * st.skill("accuracy"))
-	hit_mult = 0.7 + 0.6 * st.skill("accuracy")
 	melee_mult = 0.55 + 0.9 * st.skill("melee")
 	stamina_max = STAMINA_MAX * (0.6 + 0.8 * st.skill("stamina"))
 	regen_mult = 0.6 + 0.8 * st.skill("stamina")
@@ -409,39 +405,96 @@ func _fire(enemy: Soldier) -> void:
 	shots += 1
 	_fire_anim = 0.35
 	face_point = enemy.global_position
+	# the shot is flown, not rolled: an aim with a spread, a ball that falls, a body it
+	# either meets or does not - and if not, whoever stands further down the line
 	var from := global_position + Vector3(0, EYE_HEIGHT, 0)
+	var top := Ballistics.KNEEL_H if enemy.kneeling else Ballistics.BODY_H
+	var aim_h := 0.75 if enemy.kneeling else Ballistics.AIM_H
+	var feet := enemy.global_position
+	var aim := feet + Vector3(0, aim_h, 0)
 	var to := enemy.global_position + Vector3(0, 1.0, 0)
-	var d := from.distance_to(to)
-	var range_f := 1.0 if d <= 20.0 else lerpf(1.0, 0.12, (d - 20.0) / (MAX_RANGE - 20.0))
-	var cover_f := field.line_of_fire(from, to)
-	if enemy.kneeling and cover_f < 1.0:
-		cover_f *= 0.8
-	if cover_f < 1.0 and d < 15.0:
-		cover_f = lerpf(cover_f, 1.0, (15.0 - d) / 15.0 * 0.6)   # at a few paces a wall hides less; the ball comes over it
-	var tv := enemy.velocity.length()
-	var move_f := 1.0 if tv < 0.5 else (0.85 if tv < 2.5 else 0.75)   # a walking target costs a little, a running one a bit more
+	var d := from.distance_to(aim)
+	var dir := (aim - from) / maxf(d, 0.01)
+	var right := dir.cross(Vector3.UP).normalized()
+	var up := right.cross(dir)
+	# the spread: the man's own, opened up by battle and by everything else about the moment
+	var sig := Ballistics.sigma_range(soldier_type.skill("accuracy")) * 0.001 * Ballistics.BATTLE
 	var mv := velocity.length()
 	if mv > 0.5:
-		move_f *= 0.5 if mv < 2.5 else 0.3   # firing on the move costs a lot; at the run, most of it
-	var fatigue_f := 0.75 if tired() else (0.6 if breath > 0.0 else 1.0)   # winded from a run, or worn out
-	var high_f := clampf(1.0 + (from.y - to.y) * 0.05, 0.85, 1.25)   # the high ground steadies the aim; firing uphill does not
-	var wound_f := 0.8 if wounded else 1.0
-	var p_hit := BASE_HIT * hit_mult * range_f * cover_f * move_f * fatigue_f * wound_f * high_f
-	# a friend in the way of a careless shot
-	var friend := manager.friend_in_line(self, enemy)
+		sig *= 2.0 if mv < 2.5 else 3.3   # firing on the move costs a lot; at the run, most of it
+	if kneeling:
+		sig *= 0.8                        # a knee and a wall to rest on
+	if tired():
+		sig *= 1.3
+	elif breath > 0.0:
+		sig *= 1.6                        # winded from a run
+	if wounded:
+		sig *= 1.25
+	sig *= 1.0 + 0.8 * fear               # balls going past his ear
+	if order_volley():
+		sig *= 1.1                        # on the word, not on his own time
+	sig *= clampf(1.0 - (from.y - aim.y) * 0.04, 0.8, 1.15)   # looking down on them steadies the aim
+	var dev_h := Ballistics.gauss(rng) * sig
+	var dev_v := Ballistics.gauss(rng) * sig + sig * 0.2   # frightened men shoot high
+	# a moving target has to be led; nobody leads it exactly
+	var tv := enemy.velocity
+	tv.y = 0.0
+	var lead_err := Ballistics.gauss(rng) * 0.5 * absf(tv.dot(right)) * Ballistics.time_to(d)
+	var ball := func(x: float) -> Vector3:
+		return from + dir * x + right * (dev_h * x + lead_err * x / maxf(d, 0.01)) + up * (dev_v * x) + Vector3.UP * Ballistics.rise(x)
+	# at the target: does the ball meet the man?
+	var at: Vector3 = ball.call(d)
+	var ox := (at - aim).dot(right)
+	var oy := at.y - feet.y
+	var hit := absf(ox) < Ballistics.BODY_W * 0.5 and oy > 0.0 and oy < top
 	var victim: Soldier = enemy
-	var hit := rng.randf() < p_hit
-	if friend != null and rng.randf() < 0.35:
-		victim = friend
-		hit = true
-		friendly_hits += 1
-	elif not hit:
-		var stray := manager.stray_victim(self, from, to)
-		if stray != null and rng.randf() < 0.35:
-			victim = stray
-			hit = true
+	var end_x := d
 	if hit:
-		var kill := rng.randf() < KILL_BASE + 0.3 * soldier_type.skill("accuracy")
+		# cover between: the wall, the fence rail or the crest takes some of what would have hit
+		var cover_f := field.line_of_fire(from, to)
+		if enemy.kneeling and cover_f < 1.0:
+			cover_f *= 0.8
+		if cover_f < 1.0 and d < 15.0:
+			cover_f = lerpf(cover_f, 1.0, (15.0 - d) / 15.0 * 0.6)   # at a few paces a wall hides less
+		if rng.randf() > cover_f:
+			hit = false
+	else:
+		# a miss flies on: the first man whose body is where the ball is, friend or foe, takes it
+		var best_x := INF
+		var reach := d + 80.0
+		# where does it come down?
+		var x := d
+		while x < reach:
+			var p: Vector3 = ball.call(x)
+			if p.y < field.height_at(p.x, p.z) or not field.in_bounds(p, -6.0):
+				break
+			x += 2.0
+		end_x = x
+		for o in manager.alive_soldiers():
+			if o == self or o == enemy:
+				continue
+			var rel := o.global_position - from
+			var ax := rel.dot(dir)
+			if ax < 1.2 or ax > end_x or ax > best_x:
+				continue
+			var bp: Vector3 = ball.call(ax)
+			var side := (o.global_position - bp).dot(right)
+			var h := bp.y - o.global_position.y
+			var o_top := Ballistics.KNEEL_H if o.kneeling else Ballistics.BODY_H
+			if absf(side) < Ballistics.BODY_W * 0.5 and h > 0.0 and h < o_top:
+				best_x = ax
+				victim = o
+				oy = h
+				top = o_top
+		if best_x < INF:
+			hit = true
+			end_x = best_x
+			if victim.team == team:
+				friendly_hits += 1
+	if hit:
+		# where it lands matters: the body and head kill, the legs mostly wound
+		var upper := oy > top * 0.5
+		var kill := rng.randf() < (0.62 if upper else 0.2)
 		var dmg := MAX_HP if kill else WOUND
 		victim.take_damage(dmg, "rifle", self)
 		if victim.team != team:
@@ -449,7 +502,13 @@ func _fire(enemy: Soldier) -> void:
 			dmg_done += dmg
 	fired.emit(self, victim, hit)
 	manager.volley_pressure(self, to, hit)
-	_muzzle_flash(from, victim.global_position + Vector3(0, 1.0, 0) if hit else to + Vector3(rng.randf_range(-2, 2), rng.randf_range(-0.5, 1.5), rng.randf_range(-2, 2)))
+	_muzzle_flash_arc(ball, end_x)
+
+
+## Is this shot on the sergeant's word?
+func order_volley() -> bool:
+	var o: Dictionary = manager.orders[team]
+	return float(o.get("volley_age", 999.0)) < 0.7
 
 
 func _try_thrust(enemy: Soldier) -> void:
@@ -783,6 +842,31 @@ func _animate(delta: float) -> void:
 		label.modulate = Color(1.0, 0.85, 0.3, 0.9)
 
 
+## The smoke, and the ball's flight drawn as a faint arc from the muzzle to where it ended.
+func _muzzle_flash_arc(ball: Callable, end_x: float) -> void:
+	if manager.headless:
+		return
+	_smoke.restart()
+	_smoke.emitting = true
+	var tr := MeshInstance3D.new()
+	var im := ImmediateMesh.new()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.92, 0.6, 0.8)
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	im.surface_begin(Mesh.PRIMITIVE_LINE_STRIP, mat)
+	var n := maxi(int(end_x / 6.0), 3)
+	for k in range(n + 1):
+		var x := 1.2 + (end_x - 1.2) * float(k) / n
+		im.surface_add_vertex(ball.call(x))
+	im.surface_end()
+	tr.mesh = im
+	get_parent().add_child(tr)
+	var tw := get_tree().create_tween()
+	tw.tween_property(tr, "transparency", 1.0, 0.25)
+	tw.tween_callback(tr.queue_free)
+
+
 func _muzzle_flash(from: Vector3, to: Vector3) -> void:
 	if manager.headless:
 		return
@@ -826,6 +910,7 @@ func _spawn_ragdoll(attacker: Soldier) -> void:
 		return
 	body_root.visible = false
 	ragdoll = Ragdoll.new()
+	ragdoll.field = field
 	get_parent().add_child(ragdoll)
 	ragdoll.build(body_root.global_transform, _mat, _dark_mat, _eye_mat)
 	var shove := Vector3(0, 1.5, 0)
