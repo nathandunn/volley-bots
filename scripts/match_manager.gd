@@ -91,7 +91,7 @@ func start_match(seed_value: int = -1) -> void:
 			s.rng = RandomNumberGenerator.new()
 			s.rng.seed = rng.randi()
 			var x := (float(i) - float(n - 1) * 0.5) * spacing
-			s.position = Vector3(x, 0, home_z(t) + (0.0 if t == 0 else 0.0))
+			s.position = Vector3(x, field.height_at(x, home_z(t)), home_z(t))
 			s.rotation.y = PI if t == 0 else 0.0
 			s.fired.connect(_on_fired)
 			s.damaged.connect(_on_damaged)
@@ -371,6 +371,24 @@ func _run_sergeant(t: int) -> void:
 	var loaded_frac := 0.0
 	var in_range := 0
 	var engage: float = 68.0 - 42.0 * float(mix["patience"])
+	# can the line see the enemy at all? A hill between them and there is nothing to hold for
+	var seen := true
+	if not enemies.is_empty() and not field.hills.is_empty():
+		seen = false
+		var eye := Vector3(0, Soldier.EYE_HEIGHT, 0)
+		for e in enemies:
+			if field.line_of_fire(sgt.global_position + eye, e.global_position + Vector3(0, 1.0, 0)) > 0.0:
+				seen = true
+				break
+		if not seen:
+			for m in men:
+				if m == sgt:
+					continue
+				if field.line_of_fire(m.global_position + eye, enemy_centre + Vector3(0, 1.0, 0)) > 0.0:
+					seen = true
+					break
+	if not seen:
+		nearest_d = INF   # out of sight is out of range: the line goes and finds them
 	for m in men:
 		if m.loaded:
 			loaded_frac += 1.0

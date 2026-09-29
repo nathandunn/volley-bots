@@ -1,14 +1,33 @@
 class_name Field
 extends Node3D
-## A farm field, 100 m long (z) by 56 m wide (x), built in code. Red forms at the north end
-## (-z), Blue at the south (+z). Cover is a handful of stone walls, rail fences, boulders, a
-## ruined cottage and a few trees; a low piece is fired over, a tall piece stops the ball.
+## A field 100 m long (z) by 56 m wide (x), built in code. Red forms at the north end (-z),
+## Blue at the south (+z). The ground rolls: each layout has hills, and a hill hides what is
+## behind it, slows the man climbing it and steadies the aim of the man on top of it. Cover
+## is stone walls, rail fences, boulders, roofless ruins you can fight from inside, and trees;
+## a low piece is fired over, a tall piece stops the ball.
 
 const HALF_X := 28.0
 const HALF_Z := 50.0
 const LAYER_WORLD := 1
+const GRID := 2.0   # metres between terrain vertices
 
-## The layouts a campaign rotates through. Each is a list of x, z, size_x, size_z, height, kind.
+## The hills of each layout: x, z, radius_x, radius_z, height (negative digs a hollow).
+## A hill is a smooth dome; two side by side make a ridge.
+const HILLS := {
+	"Hedgerows": [[-12.0, -26.0, 22.0, 12.0, 2.2], [14.0, 18.0, 22.0, 12.0, 2.4], [0.0, -4.0, 14.0, 8.0, -1.2]],
+	"Churchyard": [[0.0, 0.0, 22.0, 18.0, 2.6], [-20.0, -34.0, 14.0, 10.0, 1.6], [20.0, 34.0, 14.0, 10.0, 1.6]],
+	"Sunken Road": [[0.0, 0.0, 40.0, 5.0, -1.8], [-14.0, -20.0, 18.0, 12.0, 2.0], [14.0, 20.0, 18.0, 12.0, 2.0]],
+	"Woodland": [[-14.0, -12.0, 12.0, 10.0, 3.2], [12.0, 10.0, 12.0, 10.0, 3.4], [16.0, -30.0, 10.0, 8.0, 1.8], [-16.0, 30.0, 10.0, 8.0, 1.8]],
+	"Open Plain": [[0.0, 2.0, 30.0, 12.0, 2.8], [-18.0, -30.0, 14.0, 10.0, 1.4], [18.0, 30.0, 14.0, 10.0, 1.4]],
+	"Walled Farm": [[6.0, 4.0, 16.0, 12.0, 2.4], [-16.0, -26.0, 14.0, 10.0, 1.6], [-14.0, 26.0, 12.0, 8.0, 1.2]],
+	"Orchard": [[0.0, -14.0, 30.0, 10.0, 1.8], [0.0, 14.0, 30.0, 10.0, 1.8], [0.0, 0.0, 20.0, 6.0, -0.8]],
+	"Village": [[2.0, 2.0, 20.0, 16.0, 2.2], [-18.0, -28.0, 12.0, 10.0, 1.8], [18.0, 28.0, 12.0, 10.0, 1.8]],
+	"Crossroads": [[-14.0, -14.0, 14.0, 12.0, 2.6], [14.0, 14.0, 14.0, 12.0, 2.6], [14.0, -14.0, 12.0, 10.0, -1.0], [-14.0, 14.0, 12.0, 10.0, -1.0]],
+	"Ridge": [[-14.0, 12.0, 20.0, 9.0, 5.0], [14.0, 12.0, 20.0, 9.0, 5.0], [0.0, -26.0, 30.0, 8.0, 2.6]],
+}
+
+## The pieces of each layout: x, z, size_x, size_z, height, kind. Kinds: wall, fence, boulder,
+## tree, ruin (four walls, no roof, a door in each flank - you can see in and fight from inside).
 const LAYOUTS := {
 	"Walled Farm": [
 		[-14.0, -22.0, 12.0, 0.6, 1.0, "wall"],
@@ -18,9 +37,9 @@ const LAYOUTS := {
 		[16.0, 8.0, 0.4, 9.0, 1.1, "fence"],
 		[-8.0, 20.0, 11.0, 0.6, 1.0, "wall"],
 		[13.0, 24.0, 9.0, 0.6, 1.0, "wall"],
-		[5.0, 2.0, 5.0, 4.0, 2.6, "house"],
-		[-22.0, -10.0, 2.2, 2.0, 1.6, "boulder"],
-		[22.0, 14.0, 2.4, 2.0, 1.5, "boulder"],
+		[6.0, 2.0, 7.0, 5.0, 1.7, "ruin"],
+		[-22.0, -10.0, 3.2, 2.8, 1.8, "boulder"],
+		[22.0, 14.0, 3.4, 2.8, 1.7, "boulder"],
 		[-6.0, -30.0, 1.0, 1.0, 5.0, "tree"],
 		[20.0, -32.0, 1.0, 1.0, 5.0, "tree"],
 		[-20.0, 30.0, 1.0, 1.0, 5.0, "tree"],
@@ -28,10 +47,10 @@ const LAYOUTS := {
 		[-11.0, 9.0, 1.0, 1.0, 5.0, "tree"],
 	],
 	"Open Plain": [
-		[-16.0, -6.0, 2.0, 1.8, 1.4, "boulder"],
-		[14.0, 5.0, 2.2, 2.0, 1.5, "boulder"],
-		[2.0, -26.0, 1.0, 1.0, 5.0, "tree"],
-		[-8.0, 28.0, 1.0, 1.0, 5.0, "tree"],
+		[-16.0, -8.0, 3.6, 3.0, 1.9, "boulder"],
+		[14.0, 8.0, 3.8, 3.0, 2.0, "boulder"],
+		[2.0, -30.0, 1.0, 1.0, 5.0, "tree"],
+		[-8.0, 30.0, 1.0, 1.0, 5.0, "tree"],
 		[22.0, -1.0, 0.4, 8.0, 1.1, "fence"],
 	],
 	"Woodland": [
@@ -40,12 +59,13 @@ const LAYOUTS := {
 		[15.0, 2.0, 1.0, 1.0, 5.0, "tree"], [-20.0, 8.0, 1.0, 1.0, 5.0, "tree"], [-4.0, 12.0, 1.0, 1.0, 5.0, "tree"],
 		[10.0, 16.0, 1.0, 1.0, 5.0, "tree"], [22.0, 20.0, 1.0, 1.0, 5.0, "tree"], [-14.0, 24.0, 1.0, 1.0, 5.0, "tree"],
 		[2.0, 28.0, 1.0, 1.0, 5.0, "tree"], [-9.0, -28.0, 1.0, 1.0, 5.0, "tree"], [17.0, 30.0, 1.0, 1.0, 5.0, "tree"],
-		[-22.0, -2.0, 2.0, 1.8, 1.4, "boulder"], [6.0, 7.0, 2.4, 2.0, 1.6, "boulder"], [20.0, -30.0, 2.0, 1.8, 1.4, "boulder"],
+		[-22.0, -2.0, 3.6, 3.0, 2.0, "boulder"], [6.0, 7.0, 4.0, 3.2, 2.2, "boulder"], [20.0, -30.0, 3.0, 2.6, 1.8, "boulder"],
+		[-14.0, -12.0, 3.4, 2.8, 1.9, "boulder"], [12.0, 10.0, 3.0, 2.6, 1.8, "boulder"],
 		[-3.0, 20.0, 8.0, 0.6, 1.0, "wall"],
 	],
 	"Village": [
-		[-12.0, -6.0, 5.0, 4.0, 2.6, "house"], [8.0, -10.0, 4.5, 4.0, 2.6, "house"], [14.0, 6.0, 5.0, 4.0, 2.6, "house"],
-		[-6.0, 10.0, 4.5, 4.0, 2.6, "house"], [0.0, -24.0, 4.0, 3.5, 2.6, "house"], [2.0, 24.0, 4.0, 3.5, 2.6, "house"],
+		[-12.0, -6.0, 7.0, 5.0, 1.7, "ruin"], [8.0, -10.0, 6.0, 5.0, 1.7, "ruin"], [14.0, 6.0, 7.0, 5.0, 1.7, "ruin"],
+		[-6.0, 10.0, 6.0, 5.0, 1.7, "ruin"], [0.0, -24.0, 6.0, 4.5, 1.7, "ruin"], [2.0, 24.0, 6.0, 4.5, 1.7, "ruin"],
 		[-20.0, -14.0, 10.0, 0.6, 1.0, "wall"], [20.0, 16.0, 10.0, 0.6, 1.0, "wall"],
 		[-1.0, 0.0, 0.6, 9.0, 1.0, "wall"], [-18.0, 18.0, 0.4, 8.0, 1.1, "fence"], [18.0, -20.0, 0.4, 8.0, 1.1, "fence"],
 		[-22.0, 30.0, 1.0, 1.0, 5.0, "tree"], [22.0, -32.0, 1.0, 1.0, 5.0, "tree"],
@@ -55,13 +75,15 @@ const LAYOUTS := {
 		[-10.0, -2.0, 16.0, 0.4, 1.1, "fence"], [14.0, 6.0, 12.0, 0.4, 1.1, "fence"],
 		[-14.0, 14.0, 14.0, 0.4, 1.1, "fence"], [10.0, 22.0, 14.0, 0.4, 1.1, "fence"],
 		[-22.0, 6.0, 1.0, 1.0, 5.0, "tree"], [22.0, -22.0, 1.0, 1.0, 5.0, "tree"], [0.0, 30.0, 1.0, 1.0, 5.0, "tree"],
+		[4.0, -30.0, 3.2, 2.8, 1.8, "boulder"], [-4.0, 8.0, 3.0, 2.6, 1.8, "boulder"],
 	],
 	"Churchyard": [
-		[0.0, 0.0, 6.0, 8.0, 3.2, "house"],
+		[0.0, 0.0, 8.0, 11.0, 1.9, "ruin"],
 		[-9.0, -9.0, 12.0, 0.6, 1.0, "wall"], [9.0, -9.0, 12.0, 0.6, 1.0, "wall"],
 		[-9.0, 9.0, 12.0, 0.6, 1.0, "wall"], [9.0, 9.0, 12.0, 0.6, 1.0, "wall"],
 		[-15.0, 0.0, 0.6, 12.0, 1.0, "wall"], [15.0, 0.0, 0.6, 12.0, 1.0, "wall"],
-		[-20.0, -24.0, 1.0, 1.0, 5.0, "tree"], [20.0, 24.0, 1.0, 1.0, 5.0, "tree"], [-22.0, 20.0, 2.0, 1.8, 1.4, "boulder"], [22.0, -20.0, 2.0, 1.8, 1.4, "boulder"],
+		[-20.0, -24.0, 1.0, 1.0, 5.0, "tree"], [20.0, 24.0, 1.0, 1.0, 5.0, "tree"],
+		[-22.0, 20.0, 3.4, 2.8, 1.9, "boulder"], [22.0, -20.0, 3.4, 2.8, 1.9, "boulder"],
 	],
 	"Orchard": [
 		[-18.0, -18.0, 1.0, 1.0, 5.0, "tree"], [-6.0, -18.0, 1.0, 1.0, 5.0, "tree"], [6.0, -18.0, 1.0, 1.0, 5.0, "tree"], [18.0, -18.0, 1.0, 1.0, 5.0, "tree"],
@@ -69,23 +91,26 @@ const LAYOUTS := {
 		[-18.0, 6.0, 1.0, 1.0, 5.0, "tree"], [-6.0, 6.0, 1.0, 1.0, 5.0, "tree"], [6.0, 6.0, 1.0, 1.0, 5.0, "tree"], [18.0, 6.0, 1.0, 1.0, 5.0, "tree"],
 		[-12.0, 18.0, 1.0, 1.0, 5.0, "tree"], [0.0, 18.0, 1.0, 1.0, 5.0, "tree"], [12.0, 18.0, 1.0, 1.0, 5.0, "tree"],
 		[-22.0, 0.0, 0.6, 10.0, 1.0, "wall"], [22.0, 0.0, 0.6, 10.0, 1.0, "wall"],
+		[0.0, -30.0, 6.0, 4.5, 1.7, "ruin"],
 	],
 	"Crossroads": [
 		[0.0, 0.0, 0.6, 30.0, 1.0, "wall"], [0.0, 0.0, 30.0, 0.6, 1.0, "wall"],
-		[10.0, -10.0, 4.5, 4.0, 2.6, "house"], [-10.0, 10.0, 4.5, 4.0, 2.6, "house"],
+		[10.0, -10.0, 6.5, 5.0, 1.7, "ruin"], [-10.0, 10.0, 6.5, 5.0, 1.7, "ruin"],
 		[-18.0, -20.0, 0.4, 10.0, 1.1, "fence"], [18.0, 20.0, 0.4, 10.0, 1.1, "fence"],
 		[-20.0, 26.0, 1.0, 1.0, 5.0, "tree"], [20.0, -26.0, 1.0, 1.0, 5.0, "tree"],
+		[-14.0, 14.0, 3.4, 2.8, 1.9, "boulder"], [14.0, -14.0, 3.4, 2.8, 1.9, "boulder"],
 	],
 	"Ridge": [
-		[-16.0, 0.0, 18.0, 0.6, 1.0, "wall"], [14.0, 0.0, 18.0, 0.6, 1.0, "wall"],
-		[-8.0, -14.0, 2.4, 2.0, 1.6, "boulder"], [10.0, -16.0, 2.2, 2.0, 1.5, "boulder"], [0.0, 14.0, 2.4, 2.0, 1.6, "boulder"], [-18.0, 16.0, 2.0, 1.8, 1.4, "boulder"],
-		[22.0, 10.0, 1.0, 1.0, 5.0, "tree"], [-22.0, -10.0, 1.0, 1.0, 5.0, "tree"], [4.0, -30.0, 1.0, 1.0, 5.0, "tree"], [-4.0, 30.0, 1.0, 1.0, 5.0, "tree"],
+		[-16.0, 12.0, 18.0, 0.6, 1.0, "wall"], [14.0, 12.0, 18.0, 0.6, 1.0, "wall"],
+		[-8.0, -2.0, 3.8, 3.0, 2.0, "boulder"], [10.0, -4.0, 3.4, 2.8, 1.9, "boulder"], [0.0, 22.0, 3.4, 2.8, 1.9, "boulder"],
+		[-18.0, -26.0, 3.2, 2.8, 1.8, "boulder"], [16.0, -28.0, 3.6, 3.0, 1.9, "boulder"],
+		[22.0, 16.0, 1.0, 1.0, 5.0, "tree"], [-22.0, -10.0, 1.0, 1.0, 5.0, "tree"], [4.0, -36.0, 1.0, 1.0, 5.0, "tree"], [-4.0, 34.0, 1.0, 1.0, 5.0, "tree"],
 	],
 	"Sunken Road": [
 		[-14.0, -3.0, 24.0, 0.6, 1.0, "wall"], [16.0, -3.0, 16.0, 0.6, 1.0, "wall"],
 		[-16.0, 3.0, 16.0, 0.6, 1.0, "wall"], [14.0, 3.0, 24.0, 0.6, 1.0, "wall"],
 		[-10.0, -24.0, 10.0, 0.4, 1.1, "fence"], [10.0, 24.0, 10.0, 0.4, 1.1, "fence"],
-		[-22.0, -16.0, 2.0, 1.8, 1.4, "boulder"], [22.0, 16.0, 2.0, 1.8, 1.4, "boulder"],
+		[-22.0, -16.0, 3.2, 2.8, 1.8, "boulder"], [22.0, 16.0, 3.2, 2.8, 1.8, "boulder"],
 		[4.0, -34.0, 1.0, 1.0, 5.0, "tree"], [-4.0, 34.0, 1.0, 1.0, 5.0, "tree"], [24.0, -30.0, 1.0, 1.0, 5.0, "tree"],
 	],
 }
@@ -95,80 +120,62 @@ const LAYOUT_ORDER: Array[String] = ["Hedgerows", "Churchyard", "Sunken Road", "
 	"Walled Farm", "Orchard", "Village", "Crossroads", "Ridge"]
 const START_FIELD := 5
 const LAYOUT_HELP := {
-	"Open Plain": "Two boulders, a fence and two trees. Nowhere to hide: volleys and nerve decide it.",
-	"Walled Farm": "Stone walls and fences across both halves, a cottage in the middle. Cover for whoever gets to it first.",
-	"Woodland": "Trees everywhere and a few boulders. Lines break up; skirmishers and the bayonet do well.",
-	"Village": "Six houses and walls. Short lines of sight, fighting from doorways and corners.",
-	"Sunken Road": "Long walls either side of a road across the middle. Whoever holds the road fires from cover.",
-	"Hedgerows": "Six fence rows staggered across the field. Every line finds a hedge; nobody keeps a straight line for long.",
-	"Churchyard": "A stone church ringed by low walls. A fortress for whoever gets inside first.",
-	"Orchard": "Trees in rows with walls at the flanks. Broken sight lines; cover everywhere, none of it good.",
-	"Crossroads": "Two walls crossing the middle, a house on each diagonal. Four quarters, each a fight of its own.",
-	"Ridge": "A broken wall along the crest and boulders below it. The high line holds the fire.",
+	"Open Plain": "A long low swell across the middle and two big rocks. Dead ground behind the swell; the crest is the fight.",
+	"Walled Farm": "Stone walls and fences on a rise, a roofless farmhouse in the middle. Cover for whoever gets to it first.",
+	"Woodland": "Trees, two knolls and big rocks. Lines break up; skirmishers and the bayonet do well.",
+	"Village": "Six roofless houses on a rise, walls between. Short sight lines; fighting from doorways and corners.",
+	"Sunken Road": "A road in a cut across the middle, walls either side, hills behind. Whoever holds the road fires from cover.",
+	"Hedgerows": "Six fence rows staggered over rolling ground. Every line finds a hedge; nobody keeps a straight line for long.",
+	"Churchyard": "A roofless church on a knoll, ringed by low walls. A fortress for whoever gets inside first.",
+	"Orchard": "Trees in rows on two gentle rises with a hollow between, walls at the flanks. Cover everywhere, none of it good.",
+	"Crossroads": "Two walls crossing the middle, a ruin and a knoll on each diagonal, hollows between. Four quarters, each a fight of its own.",
+	"Ridge": "A five-metre ridge across Blue's half with a broken wall on the crest; rocks below it. The high line holds the fire.",
 }
 
 var layout_name := "Walled Farm"
 
-## x, z, size_x, size_z, height, kind
-const PIECES: Array = [
-	[-14.0, -22.0, 12.0, 0.6, 1.0, "wall"],
-	[12.0, -18.0, 9.0, 0.6, 1.0, "wall"],
-	[0.0, -8.0, 0.6, 10.0, 1.0, "wall"],
-	[-18.0, 4.0, 10.0, 0.4, 1.1, "fence"],
-	[16.0, 8.0, 0.4, 9.0, 1.1, "fence"],
-	[-8.0, 20.0, 11.0, 0.6, 1.0, "wall"],
-	[13.0, 24.0, 9.0, 0.6, 1.0, "wall"],
-	[5.0, 2.0, 5.0, 4.0, 2.6, "house"],
-	[-22.0, -10.0, 2.2, 2.0, 1.6, "boulder"],
-	[22.0, 14.0, 2.4, 2.0, 1.5, "boulder"],
-	[-6.0, -30.0, 1.0, 1.0, 5.0, "tree"],
-	[20.0, -32.0, 1.0, 1.0, 5.0, "tree"],
-	[-20.0, 30.0, 1.0, 1.0, 5.0, "tree"],
-	[9.0, 34.0, 1.0, 1.0, 5.0, "tree"],
-	[-11.0, 9.0, 1.0, 1.0, 5.0, "tree"],
-]
-
 var pieces: Array[Dictionary] = []   # {rect: Rect2 (x,z), h: float, kind: String, tall: bool}
 var spots: Array[Dictionary] = []    # {pos: Vector3, piece: int, normal: Vector3}
+var hills: Array = []
+
+
+## The ground height at a point: the sum of the layout's domes.
+func height_at(x: float, z: float) -> float:
+	var h := 0.0
+	for hl in hills:
+		var dx: float = (x - hl[0]) / hl[2]
+		var dz: float = (z - hl[1]) / hl[3]
+		var r2: float = dx * dx + dz * dz
+		if r2 < 1.0:
+			var r := sqrt(r2)
+			h += hl[4] * (0.5 + 0.5 * cos(PI * r))   # smooth dome: full height at the centre, nothing at the rim
+	return h
+
+
+## Where a point sits on the ground.
+func ground(p: Vector3) -> Vector3:
+	return Vector3(p.x, height_at(p.x, p.z), p.z)
+
+
+## The climb ahead in a direction: metres up per metre travelled (negative downhill).
+func slope(p: Vector3, dir: Vector3) -> float:
+	var d := Vector3(dir.x, 0, dir.z)
+	if d.length_squared() < 0.001:
+		return 0.0
+	d = d.normalized()
+	return height_at(p.x + d.x, p.z + d.z) - height_at(p.x, p.z)
 
 
 func _ready() -> void:
-	var ground := StandardMaterial3D.new()
-	ground.albedo_color = Color(0.33, 0.46, 0.24)
-	ground.roughness = 1.0
-	_static_box(Vector3(0, -0.5, 0), Vector3(HALF_X * 2 + 8, 1.0, HALF_Z * 2 + 8), ground)
-	# a worn track across the middle, and lighter strips so movement reads
-	var track := StandardMaterial3D.new()
-	track.albedo_color = Color(0.5, 0.42, 0.28)
-	var t := MeshInstance3D.new()
-	t.mesh = _box_mesh(Vector3(HALF_X * 2, 0.02, 3.0))
-	t.material_override = track
-	t.position = Vector3(0, 0.005, -1.0)
-	add_child(t)
-	var stripe := StandardMaterial3D.new()
-	stripe.albedo_color = Color(0.36, 0.5, 0.26)
-	for i in range(-4, 5):
-		var s := MeshInstance3D.new()
-		s.mesh = _box_mesh(Vector3(HALF_X * 2, 0.015, 4.0))
-		s.material_override = stripe
-		s.position = Vector3(0, 0.004, i * 11.0)
-		add_child(s)
-	# deployment lines at each end
-	var line_mat := StandardMaterial3D.new()
-	line_mat.albedo_color = Color(0.85, 0.85, 0.8)
-	for zz in [-HALF_Z + 6.0, HALF_Z - 6.0]:
-		var l := MeshInstance3D.new()
-		l.mesh = _box_mesh(Vector3(HALF_X * 2, 0.02, 0.15))
-		l.material_override = line_mat
-		l.position = Vector3(0, 0.01, zz)
-		add_child(l)
+	hills = HILLS.get(layout_name, [])
+	_build_terrain()
 
 	var wall_mat := StandardMaterial3D.new()
 	wall_mat.albedo_color = Color(0.55, 0.53, 0.48)
 	var fence_mat := StandardMaterial3D.new()
 	fence_mat.albedo_color = Color(0.45, 0.32, 0.18)
-	var house_mat := StandardMaterial3D.new()
-	house_mat.albedo_color = Color(0.62, 0.5, 0.4)
+	var ruin_mat := StandardMaterial3D.new()
+	ruin_mat.albedo_color = Color(0.62, 0.52, 0.42)
 	var rock_mat := StandardMaterial3D.new()
 	rock_mat.albedo_color = Color(0.45, 0.45, 0.47)
 	var trunk_mat := StandardMaterial3D.new()
@@ -176,15 +183,24 @@ func _ready() -> void:
 	var leaf_mat := StandardMaterial3D.new()
 	leaf_mat.albedo_color = Color(0.2, 0.4, 0.16)
 
-	var pieces_src: Array = LAYOUTS.get(layout_name, PIECES)
+	# ruins become their four walls (with a door in each flank) before anything is built
+	var pieces_src: Array = []
+	for p in LAYOUTS.get(layout_name, LAYOUTS["Walled Farm"]):
+		if p[5] == "ruin":
+			pieces_src.append_array(_ruin_walls(p))
+		else:
+			pieces_src.append(p)
 	for i in pieces_src.size():
 		var p: Array = pieces_src[i]
 		var kind: String = p[5]
 		var size := Vector3(p[2], p[4], p[3])
-		var pos := Vector3(p[0], p[4] * 0.5, p[1])
+		var base := height_at(p[0], p[1])
+		var pos := Vector3(p[0], base + p[4] * 0.5, p[1])
 		match kind:
 			"wall":
-				_static_box(pos, size, wall_mat)
+				_static_box(Vector3(pos.x, pos.y - 0.3, pos.z), Vector3(size.x, size.y + 0.6, size.z), wall_mat)   # sunk a little so it meets a slope
+			"ruinwall":
+				_static_box(Vector3(pos.x, pos.y - 0.3, pos.z), Vector3(size.x, size.y + 0.6, size.z), ruin_mat)
 			"fence":
 				# two rails and posts, one collider
 				var body := _static_box(pos, size, fence_mat, false)
@@ -194,38 +210,41 @@ func _ready() -> void:
 					var r := MeshInstance3D.new()
 					r.mesh = _box_mesh(Vector3(length, 0.1, 0.1) if along_x else Vector3(0.1, 0.1, length))
 					r.material_override = fence_mat
-					r.position = Vector3(0, rail_y - pos.y, 0)
+					r.position = Vector3(0, rail_y - p[4] * 0.5, 0)
 					body.add_child(r)
 				var n := int(length / 2.0)
 				for k in range(n + 1):
 					var post := MeshInstance3D.new()
-					post.mesh = _box_mesh(Vector3(0.14, 1.1, 0.14))
+					post.mesh = _box_mesh(Vector3(0.14, 1.4, 0.14))
 					post.material_override = fence_mat
 					var off := -length * 0.5 + k * (length / n)
-					post.position = Vector3(off if along_x else 0.0, 0.55 - pos.y, 0.0 if along_x else off)
+					var px := off if along_x else 0.0
+					var pz := 0.0 if along_x else off
+					# each post stands on its own bit of ground
+					var gy := height_at(p[0] + px, p[1] + pz) - base
+					post.position = Vector3(px, 0.4 - p[4] * 0.5 + gy, pz)
 					body.add_child(post)
-			"house":
-				var body := _static_box(pos, size, house_mat)
-				var roof := MeshInstance3D.new()
-				var pm := PrismMesh.new()
-				pm.size = Vector3(size.x + 0.6, 1.4, size.z + 0.6)
-				roof.mesh = pm
-				var roof_mat := StandardMaterial3D.new()
-				roof_mat.albedo_color = Color(0.35, 0.22, 0.18)
-				roof.material_override = roof_mat
-				roof.position = Vector3(0, size.y * 0.5 + 0.7, 0)
-				body.add_child(roof)
 			"boulder":
 				var body := _static_box(pos, size, rock_mat, false)
 				var m := MeshInstance3D.new()
 				var sm := SphereMesh.new()
-				sm.radius = maxf(size.x, size.z) * 0.6
-				sm.height = size.y * 1.3
+				sm.radius = maxf(size.x, size.z) * 0.62
+				sm.height = size.y * 1.5
 				m.mesh = sm
 				m.material_override = rock_mat
+				m.position = Vector3(0, -size.y * 0.15, 0)
 				body.add_child(m)
+				# a second lump so it reads as rock, not a ball
+				var m2 := MeshInstance3D.new()
+				var sm2 := SphereMesh.new()
+				sm2.radius = maxf(size.x, size.z) * 0.4
+				sm2.height = size.y * 1.1
+				m2.mesh = sm2
+				m2.material_override = rock_mat
+				m2.position = Vector3(size.x * 0.3, -size.y * 0.2, -size.z * 0.25)
+				body.add_child(m2)
 			"tree":
-				var body := _static_box(Vector3(p[0], 1.5, p[1]), Vector3(0.6, 3.0, 0.6), trunk_mat)
+				var body := _static_box(Vector3(p[0], base + 1.5, p[1]), Vector3(0.6, 3.0, 0.6), trunk_mat)
 				var crown := MeshInstance3D.new()
 				var sm := SphereMesh.new()
 				sm.radius = 2.4
@@ -235,9 +254,113 @@ func _ready() -> void:
 				crown.position = Vector3(0, 3.2, 0)
 				body.add_child(crown)
 		var rect := Rect2(p[0] - p[2] * 0.5, p[1] - p[3] * 0.5, p[2], p[3])
-		var tall: bool = kind == "house" or kind == "tree" or p[4] >= 1.4
+		var tall: bool = kind == "tree" or p[4] >= 1.4
 		pieces.append({"rect": rect, "h": float(p[4]), "kind": kind, "tall": tall})
-		_make_spots(i, rect, kind)
+	for i in pieces.size():
+		_make_spots(i, pieces[i]["rect"], pieces[i]["kind"])
+
+
+## A ruin: four walls 0.5 m thick, no roof, and a 1.8 m doorway in the middle of each flank
+## (the east and west walls), so either side can get in and the fight inside is in the open air.
+static func _ruin_walls(p: Array) -> Array:
+	var x: float = p[0]
+	var z: float = p[1]
+	var sx: float = p[2]
+	var sz: float = p[3]
+	var h: float = p[4]
+	var t := 0.5
+	var door := 1.8
+	var out := []
+	# north and south walls, full width
+	out.append([x, z - sz * 0.5 + t * 0.5, sx, t, h, "ruinwall"])
+	out.append([x, z + sz * 0.5 - t * 0.5, sx, t, h, "ruinwall"])
+	# east and west walls, split around a doorway
+	var seg := (sz - door) * 0.5
+	for side in [-1.0, 1.0]:
+		var wx: float = x + float(side) * (sx * 0.5 - t * 0.5)
+		out.append([wx, z - sz * 0.5 + seg * 0.5, t, seg, h, "ruinwall"])
+		out.append([wx, z + sz * 0.5 - seg * 0.5, t, seg, h, "ruinwall"])
+	return out
+
+
+## The ground: a mesh over the hills, and a heightmap collider so ragdolls lie on the slope.
+func _build_terrain() -> void:
+	var nx := int((HALF_X * 2 + 8) / GRID) + 1
+	var nz := int((HALF_Z * 2 + 8) / GRID) + 1
+	var x0 := -(nx - 1) * GRID * 0.5
+	var z0 := -(nz - 1) * GRID * 0.5
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var heights := PackedFloat32Array()
+	heights.resize(nx * nz)
+	var grass_a := Color(0.33, 0.46, 0.24)
+	var grass_b := Color(0.36, 0.5, 0.26)
+	for j in nz:
+		for i in nx:
+			heights[j * nx + i] = height_at(x0 + i * GRID, z0 + j * GRID)
+	var vert := func(i: int, j: int) -> void:
+		var x := x0 + i * GRID
+		var z := z0 + j * GRID
+		var y: float = heights[j * nx + i]
+		# normal from the neighbours
+		var hl: float = heights[j * nx + maxi(i - 1, 0)]
+		var hr: float = heights[j * nx + mini(i + 1, nx - 1)]
+		var hd: float = heights[maxi(j - 1, 0) * nx + i]
+		var hu: float = heights[mini(j + 1, nz - 1) * nx + i]
+		st.set_normal(Vector3(hl - hr, 2.0 * GRID, hd - hu).normalized())
+		# lighter strips every 11 m so movement reads, a worn track across the middle, paler on the tops
+		var band: bool = int(floor((z + 2.0) / 11.0)) % 2 == 0
+		var c := grass_a if band else grass_b
+		if absf(z + 1.0) < 1.5:
+			c = Color(0.5, 0.42, 0.28)
+		# higher ground is paler and drier; a hollow is darker and greener
+		c = c.lightened(clampf(y * 0.06, 0.0, 0.3)) if y >= 0.0 else c.darkened(clampf(-y * 0.15, 0.0, 0.3))
+		if y > 0.5:
+			c = c.lerp(Color(0.55, 0.5, 0.3), clampf((y - 0.5) * 0.1, 0.0, 0.45))
+		st.set_color(c)
+		st.add_vertex(Vector3(x, y, z))
+	for j in nz - 1:
+		for i in nx - 1:
+			vert.call(i, j)
+			vert.call(i + 1, j)
+			vert.call(i, j + 1)
+			vert.call(i + 1, j)
+			vert.call(i + 1, j + 1)
+			vert.call(i, j + 1)
+	var mesh := st.commit()
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 1.0
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+	var body := StaticBody3D.new()
+	body.collision_layer = 4   # the ground is for ragdolls; the men ride height_at() and never touch it
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var hm := HeightMapShape3D.new()
+	hm.map_width = nx
+	hm.map_depth = nz
+	hm.map_data = heights
+	cs.shape = hm
+	cs.scale = Vector3(GRID, 1.0, GRID)
+	body.add_child(cs)
+	add_child(body)
+
+	# deployment lines at each end, laid on the ground
+	var line_mat := StandardMaterial3D.new()
+	line_mat.albedo_color = Color(0.85, 0.85, 0.8)
+	for zz in [-HALF_Z + 6.0, HALF_Z - 6.0]:
+		for k in range(-13, 14):
+			var l := MeshInstance3D.new()
+			l.mesh = _box_mesh(Vector3(2.0, 0.04, 0.15))
+			l.material_override = line_mat
+			var lx := k * 2.0
+			l.position = Vector3(lx, height_at(lx, zz) + 0.03, zz)
+			add_child(l)
 
 
 ## Firing positions along each face of a piece: a man's width back from it, one every 1.3 m.
@@ -249,7 +372,7 @@ func _make_spots(idx: int, rect: Rect2, kind: String) -> void:
 			var c := Vector3(rect.get_center().x, 0, rect.get_center().y)
 			faces.append({"pos": c + n * (maxf(rect.size.x, rect.size.y) * 0.5 + 0.9), "normal": n})
 		for f in faces:
-			spots.append({"pos": f["pos"], "piece": idx, "normal": f["normal"]})
+			spots.append({"pos": ground(f["pos"]), "piece": idx, "normal": f["normal"]})
 		return
 	var along_x := rect.size.x >= rect.size.y
 	var length: float = rect.size.x if along_x else rect.size.y
@@ -261,7 +384,9 @@ func _make_spots(idx: int, rect: Rect2, kind: String) -> void:
 			var c := rect.get_center()
 			var pos := Vector3(c.x + (off if along_x else 0.0), 0.0, c.y + (0.0 if along_x else off))
 			pos += normal * ((rect.size.y if along_x else rect.size.x) * 0.5 + 0.9)
-			spots.append({"pos": pos, "piece": idx, "normal": normal})
+			if blocked(pos, 0.2):
+				continue   # a ruin's inner corner, or a wall hard against another
+			spots.append({"pos": ground(pos), "piece": idx, "normal": normal})
 
 
 func in_bounds(p: Vector3, margin: float = 0.8) -> bool:
@@ -295,9 +420,10 @@ func free_point(p: Vector3, pad: float = 0.6) -> Vector3:
 	return clamp_point(p)
 
 
-## The line of fire from `from` to `to`: 1.0 clear; 0.0 if a tall piece stands in the way;
-## otherwise the cover the target gets from a low piece within 2.2 m of him (0.45), or a tall
-## piece's edge (0.3) - the shooter aims at what shows above the wall.
+## The line of fire from `from` to `to` (both at their true heights): 1.0 clear; 0.0 if a tall
+## piece or the ground stands in the way; otherwise the cover the target gets from a low piece
+## within 2.2 m of him (0.45), a tall piece's edge (0.3), or a crest he is just behind (0.5) -
+## the shooter aims at what shows above it.
 func line_of_fire(from: Vector3, to: Vector3) -> float:
 	var a := Vector2(from.x, from.z)
 	var b := Vector2(to.x, to.z)
@@ -314,6 +440,19 @@ func line_of_fire(from: Vector3, to: Vector3) -> float:
 				return 0.0
 		elif near_target:
 			best = minf(best, 0.45)
+	# the ground: walk the line and see whether a hill gets in the way
+	if not hills.is_empty():
+		var d := from.distance_to(to)
+		var steps := maxi(int(d / 2.0), 1)
+		for k in range(1, steps):
+			var t := float(k) / steps
+			var p := from.lerp(to, t)
+			var clear := p.y - height_at(p.x, p.z)
+			if clear < 0.0:
+				return 0.0
+			# a crest within the last few metres of the target hides all but his head and shoulders
+			if clear < 0.8 and (1.0 - t) * d < 5.0:
+				best = minf(best, 0.5)
 	return best
 
 

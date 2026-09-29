@@ -380,7 +380,7 @@ func _ai_pick(t: int, opening: bool) -> String:
 	var e_coh := e.get_trait("cohesion")
 	var layout: String = field.layout_name if field != null else "Walled Farm"
 	var pieces: int = (Field.LAYOUTS.get(layout, []) as Array).size()
-	var open_ground: bool = pieces <= 4
+	var open_ground: bool = pieces <= 6
 	var thick_ground: bool = pieces >= 10
 	var scored := []
 	for d in DOCTRINES:

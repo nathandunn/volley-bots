@@ -424,8 +424,9 @@ func _fire(enemy: Soldier) -> void:
 	if mv > 0.5:
 		move_f *= 0.5 if mv < 2.5 else 0.3   # firing on the move costs a lot; at the run, most of it
 	var fatigue_f := 0.75 if tired() else (0.6 if breath > 0.0 else 1.0)   # winded from a run, or worn out
+	var high_f := clampf(1.0 + (from.y - to.y) * 0.05, 0.85, 1.25)   # the high ground steadies the aim; firing uphill does not
 	var wound_f := 0.8 if wounded else 1.0
-	var p_hit := BASE_HIT * hit_mult * range_f * cover_f * move_f * fatigue_f * wound_f
+	var p_hit := BASE_HIT * hit_mult * range_f * cover_f * move_f * fatigue_f * wound_f * high_f
 	# a friend in the way of a careless shot
 	var friend := manager.friend_in_line(self, enemy)
 	var victim: Soldier = enemy
@@ -554,10 +555,14 @@ func _move(delta: float) -> void:
 	_last_pos = global_position
 	# keep a shoulder's width from the next man rather than shove through him
 	var push := manager.separation(self)
+	# the hill: a climb slows a man, a descent hurries him a little
+	if speed > 0.0:
+		var climb := field.slope(global_position, dir)
+		speed *= clampf(1.0 - climb * 1.3, 0.4, 1.15)
 	velocity = dir * speed + push * 1.2
 	velocity.y = 0.0
 	move_and_slide()
-	global_position.y = 0.0
+	global_position.y = field.height_at(global_position.x, global_position.z)
 	# facing
 	var face := face_point - global_position
 	face.y = 0.0

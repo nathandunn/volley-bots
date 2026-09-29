@@ -1,7 +1,8 @@
 # Volley Bots — a line of twenty, single-shot rifles and bayonets
 
-AI battle in Godot 4 (3D, web export). Two companies of up to **20 men a side** meet on a
-farm field with walls, fences, a ruined cottage and a few trees. Mid-19th-century kit: a
+AI battle in Godot 4 (3D, web export). Two companies of up to **20 men a side** meet on
+rolling ground - every field has its hills - with stone walls, fences, big rocks, roofless
+ruins you can fight from inside, and trees. Mid-19th-century kit: a
 muzzle-loading rifle (one shot, ~9 s to reload, poor at range), a bayonet, two legs and a
 temper. Nobody takes orders — formation, spacing, cover, when to fire, whether to fire
 together or go in with the bayonet, and when to fall back all come out of the men's
@@ -85,6 +86,17 @@ The fight ends when one side has nobody left standing in the line. If nobody has
 for 45 s (after two minutes), or the clock runs out (seven minutes), **the ground decides**: the
 side whose line stands further into the enemy's country holds the field; harm done breaks a
 tie. A company that only ever gives ground has lost it.
+
+## The ground
+
+Each of the ten fields is a set of smooth domes (`Field.HILLS`) - a ridge, a knoll, a hollow,
+a sunken road. A hill **hides** what is behind it (the line of fire is walked over the
+ground; a crest just in front of the target hides all but his head, 0.5), **slows** the man
+climbing it (a 1-in-3 slope costs 40 % of his pace; downhill hurries him), and **steadies**
+the aim of the man on top (+5 % per metre of height over the target, up to +25 %; firing
+uphill costs up to 15 %). A line that cannot see the enemy goes and finds him; nobody holds
+a position facing a hill. Ruins are four walls with a doorway in each flank and no roof, so
+the fight inside is in plain view.
 
 ## The rifle
 
