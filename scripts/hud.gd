@@ -240,6 +240,8 @@ func _style(b: Button, kind: String) -> void:
 func _cursor_for(n: Node) -> void:
 	if n is BaseButton or n is Slider:
 		(n as Control).mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		if n is Slider:
+			(n as Slider).scrollable = false   # the wheel scrolls the page, never a value under it
 	elif n is ScrollContainer or n is PanelContainer or n is Label:
 		# reading, not grabbing the field: the plain arrow over the panels
 		(n as Control).mouse_default_cursor_shape = Control.CURSOR_ARROW
