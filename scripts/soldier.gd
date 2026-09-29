@@ -558,7 +558,7 @@ func _move(delta: float) -> void:
 	# the hill: a climb slows a man, a descent hurries him a little
 	if speed > 0.0:
 		var climb := field.slope(global_position, dir)
-		speed *= clampf(1.0 - climb * 1.3, 0.4, 1.15)
+		speed *= clampf(1.0 - climb * 0.8, 0.6, 1.12)
 	velocity = dir * speed + push * 1.2
 	velocity.y = 0.0
 	move_and_slide()
