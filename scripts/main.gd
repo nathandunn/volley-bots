@@ -203,6 +203,8 @@ func _start_next() -> void:
 	_restart_timer = -1.0
 	if hud != null:
 		hud.on_match_started()
+	if cam != null:
+		cam.refit()   # every battle and every round opens on the whole field, as Fit view
 	var s := -1
 	if _base_seed >= 0:
 		s = _base_seed + manager.match_index
