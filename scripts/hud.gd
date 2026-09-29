@@ -41,6 +41,7 @@ var round_label: Label
 var _round_text := ""
 var _batch_text := ""
 var campaign_on := false
+var _plan_label: Label   # which field the companies are being set up for
 var _type_controls := [[], []]   # chips and sliders locked while a campaign runs
 var _campaign_btn: Button
 var _fight_btn: Button
@@ -85,7 +86,7 @@ func setup(m: MatchManager) -> void:
 		else:
 			campaign_requested.emit())
 	row.add_child(_top_campaign_btn)
-	var teams_btn := _button("Companies")
+	var teams_btn := _button("Edit Company")
 	teams_btn.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 	row.add_child(teams_btn)
 	var fight := _button("» New battle")
@@ -287,7 +288,7 @@ func _overlay(title_text: String) -> Array:
 
 
 func _build_teams_overlay() -> void:
-	var parts := _overlay("Companies")
+	var parts := _overlay("Edit Company")
 	teams_overlay = parts[0]
 	var box: VBoxContainer = parts[1]
 	_setup_note = Label.new()
@@ -296,6 +297,11 @@ func _build_teams_overlay() -> void:
 	_setup_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_setup_note.visible = false
 	box.add_child(_setup_note)
+	_plan_label = Label.new()
+	_plan_label.add_theme_font_size_override("font_size", 15)
+	_plan_label.add_theme_color_override("font_color", Color(0.6, 0.9, 0.95))
+	_plan_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_plan_label)
 	var head := HFlowContainer.new()
 	box.add_child(head)
 	_head_campaign_btn = _button("» Start a campaign (5 rounds)")
@@ -693,7 +699,7 @@ func show_result(res: Dictionary) -> void:
 	_style(again, "go")
 	again.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
 	row.add_child(again)
-	var teams := _button("Companies")
+	var teams := _button("Edit Company")
 	teams.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 	row.add_child(teams)
 	results_overlay.visible = true
@@ -769,7 +775,7 @@ func show_batch(summary: Dictionary) -> void:
 	_style(batch, "go")
 	batch.pressed.connect(func(): _close_overlays(); batch_requested.emit(BATCH_N))
 	row.add_child(batch)
-	var teams := _button("Companies")
+	var teams := _button("Edit Company")
 	teams.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 	row.add_child(teams)
 	var pad := Control.new()
@@ -794,12 +800,23 @@ func set_round(r: int, total: int, layout: String, sizes: Array, field_no: int =
 
 ## The setup panel, with a line at the top saying why it is open. Nothing runs until a
 ## button here (or the top row) says so.
+## The field the companies are being set up for, at the top of Edit Company. In a campaign
+## it names the round as well; a single battle just names the ground.
+func set_plan(field_no: int, layout: String, round_no: int = 0, total: int = 0) -> void:
+	var where := "field %d of %d, %s" % [field_no, Field.LAYOUT_ORDER.size(), layout]
+	var help: String = Field.LAYOUT_HELP.get(layout, "")
+	if round_no > 0:
+		_plan_label.text = "Planning round %d of %d on %s - %s" % [round_no, total, where, help]
+	else:
+		_plan_label.text = "Planning a battle on %s - %s" % [where, help]
+
+
 func open_setup(why: String) -> void:
 	_close_overlays()
 	_setup_note.text = why
 	_setup_note.visible = why != ""
 	teams_overlay.visible = true
-	status_label.text = "Nothing running - choose under Companies."
+	status_label.text = "Nothing running - choose under Edit Company."
 
 
 func _set_commander(t: int, who: String) -> void:
@@ -904,7 +921,7 @@ func show_round(sm: Dictionary) -> void:
 				var what := "%s / %s" % [picks[t], tpicks[t]] if tpicks[t] != "" else String(picks[t])
 				_stat_row(g3, "%s (computer) will field" % MatchManager.TEAM_NAMES[t], [what if t == 0 else "", what if t == 1 else ""])
 		var nl := Label.new()
-		nl.text = "Types and personalities may be changed under Companies before the next round." if picks[0] == "" or picks[1] == "" else "Both sides are the computer's to command; watch how they answer each other."
+		nl.text = "Types and personalities may be changed under Edit Company before the next round." if picks[0] == "" or picks[1] == "" else "Both sides are the computer's to command; watch how they answer each other."
 		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nl.add_theme_font_size_override("font_size", 13)
 		nl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.7))
@@ -939,7 +956,7 @@ func show_round(sm: Dictionary) -> void:
 		_style(nxt, "go")
 		nxt.pressed.connect(func(): _close_overlays(); next_round_requested.emit())
 		row.add_child(nxt)
-		var teams := _button("Companies")
+		var teams := _button("Edit Company")
 		teams.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 		row.add_child(teams)
 		var quit := _button("× Abandon campaign")

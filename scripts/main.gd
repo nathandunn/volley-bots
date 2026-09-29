@@ -95,6 +95,7 @@ func _ready() -> void:
 	hud = Hud.new()
 	add_child(hud)
 	hud.setup(manager)
+	hud.set_plan(Field.LAYOUT_ORDER.find(field.layout_name) + 1, field.layout_name)
 	hud.new_match_requested.connect(func():
 		batch_left = 0
 		batch_results.clear()
@@ -294,6 +295,8 @@ func _rebuild_field(layout: String) -> void:
 	field.layout_name = layout
 	add_child(field)
 	manager.field = field
+	if hud != null:
+		hud.set_plan(Field.LAYOUT_ORDER.find(layout) + 1, layout)
 
 
 func _start_campaign() -> void:
@@ -341,6 +344,7 @@ func _next_round() -> void:
 				next_no += 1
 		manager.rosters[t] = roster
 	hud.set_round(campaign_round, CAMPAIGN_ROUNDS, layout, [manager.rosters[0].size(), manager.rosters[1].size()], campaign_field)
+	hud.set_plan(campaign_field, layout, campaign_round, CAMPAIGN_ROUNDS)
 	_start_next()
 
 
@@ -432,6 +436,7 @@ func _on_round_ended(result: Dictionary) -> void:
 	if not over:
 		# the next battlefield goes up now, so it can be surveyed before personalities are chosen
 		_rebuild_field(next_layout)
+		hud.set_plan(campaign_field, next_layout, campaign_round + 1, CAMPAIGN_ROUNDS)
 		if cam != null:
 			cam.refit()
 	if over:
