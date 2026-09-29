@@ -76,7 +76,7 @@ func setup(m: MatchManager) -> void:
 	var row := HFlowContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(row)
-	_top_campaign_btn = _button("Start a campaign")
+	_top_campaign_btn = _button("» Start a campaign")
 	_accent(_top_campaign_btn)
 	_top_campaign_btn.pressed.connect(func():
 		_close_overlays()
@@ -88,7 +88,8 @@ func setup(m: MatchManager) -> void:
 	var teams_btn := _button("Companies")
 	teams_btn.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 	row.add_child(teams_btn)
-	var fight := _button("New battle")
+	var fight := _button("» New battle")
+	_style(fight, "go")
 	fight.pressed.connect(func():
 		_close_overlays()
 		if campaign_on:
@@ -182,9 +183,37 @@ func _make_theme() -> Theme:
 
 
 func _accent(b: Button) -> void:
+	_style(b, "gold")
+
+
+
+## Colour says what a button does: green goes on (next round, fight, again), red ends
+## something (abandon, cancel), gold opens a campaign; the rest stay neutral. The glyph in
+## front says the same thing in another way.
+func _style(b: Button, kind: String) -> void:
+	var bg: Color
+	var border: Color
+	var fg := Color(0.98, 0.98, 0.95)
+	match kind:
+		"go":
+			bg = Color(0.16, 0.42, 0.2)
+			border = Color(0.55, 0.9, 0.55)
+		"stop":
+			bg = Color(0.5, 0.14, 0.12)
+			border = Color(0.95, 0.55, 0.5)
+		"gold":
+			bg = Color(0.72, 0.5, 0.12)
+			border = Color(1.0, 0.85, 0.5)
+			fg = Color(0.1, 0.08, 0.04)
+		_:
+			for st in ["normal", "hover", "pressed"]:
+				b.remove_theme_stylebox_override(st)
+			for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+				b.remove_theme_color_override(c)
+			return
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.72, 0.5, 0.12)
-	sb.border_color = Color(1.0, 0.85, 0.5)
+	sb.bg_color = bg
+	sb.border_color = border
 	sb.set_border_width_all(2)
 	sb.set_corner_radius_all(7)
 	sb.content_margin_left = 12
@@ -192,13 +221,13 @@ func _accent(b: Button) -> void:
 	sb.content_margin_top = 6
 	sb.content_margin_bottom = 6
 	b.add_theme_stylebox_override("normal", sb)
-	var sb2 := sb.duplicate()
-	sb2.bg_color = Color(0.85, 0.6, 0.18)
+	var sb2: StyleBoxFlat = sb.duplicate()
+	sb2.bg_color = bg.lightened(0.18)
 	b.add_theme_stylebox_override("hover", sb2)
 	b.add_theme_stylebox_override("pressed", sb2)
-	b.add_theme_color_override("font_color", Color(0.1, 0.08, 0.04))
-	b.add_theme_color_override("font_hover_color", Color(0.1, 0.08, 0.04))
-	b.add_theme_color_override("font_pressed_color", Color(0.1, 0.08, 0.04))
+	b.add_theme_color_override("font_color", fg)
+	b.add_theme_color_override("font_hover_color", fg)
+	b.add_theme_color_override("font_pressed_color", fg)
 
 
 func _button(text: String) -> Button:
@@ -234,7 +263,7 @@ func _overlay(title_text: String) -> Array:
 	ov.add_child(vb)
 	var head := HBoxContainer.new()
 	vb.add_child(head)
-	var close := _button("< Close")
+	var close := _button("« Close")
 	close.custom_minimum_size = Vector2(96, 40)
 	close.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	close.pressed.connect(func(): ov.visible = false)
@@ -269,7 +298,7 @@ func _build_teams_overlay() -> void:
 	box.add_child(_setup_note)
 	var head := HFlowContainer.new()
 	box.add_child(head)
-	_head_campaign_btn = _button("Start a campaign (5 rounds)")
+	_head_campaign_btn = _button("» Start a campaign (5 rounds)")
 	_head_campaign_btn.custom_minimum_size = Vector2(0, 46)
 	_accent(_head_campaign_btn)
 	_head_campaign_btn.pressed.connect(func():
@@ -279,8 +308,9 @@ func _build_teams_overlay() -> void:
 		else:
 			campaign_requested.emit())
 	head.add_child(_head_campaign_btn)
-	var fight0 := _button("Fight one battle")
+	var fight0 := _button("» Fight one battle")
 	fight0.custom_minimum_size = Vector2(0, 46)
+	_style(fight0, "go")
 	fight0.pressed.connect(func():
 		_close_overlays()
 		if campaign_on:
@@ -290,7 +320,7 @@ func _build_teams_overlay() -> void:
 	head.add_child(fight0)
 	_fight_btn0 = fight0
 	var note := Label.new()
-	note.text = "Nobody takes orders. Pick what the men are (four properties on one budget) and who they are (six traits); formation, cover, volleys, charges and retreats all come out of that. Simulation: one battle, or Sim x10 for the numbers. Campaign: five rounds on five fields - the men who stand or run carry over, the dead do not; recruits fill the ranks until the last round, which is fought with what is left. Types lock once a campaign starts; personalities may change between rounds."
+	note.text = "Nobody takes orders. Pick what the men are (four properties on one budget) and who they are (six traits); formation, cover, volleys, charges and retreats all come out of that. Simulation: one battle, or Sim x10 for the numbers. Campaign: five rounds along a front of ten fields - the men who stand or run carry over, the dead do not; recruits fill the ranks until the last round, which is fought with what is left. Types and personalities may both be changed between rounds - by you, or by the computer for a side you hand it."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.add_theme_font_size_override("font_size", 13)
 	note.add_theme_color_override("font_color", Color(0.75, 0.75, 0.7))
@@ -317,8 +347,9 @@ func _build_teams_overlay() -> void:
 		box.add_child(fl)
 	var foot := HFlowContainer.new()
 	box.add_child(foot)
-	var fight := _button("Fight with these companies")
+	var fight := _button("» Fight with these companies")
 	fight.custom_minimum_size = Vector2(0, 46)
+	_style(fight, "go")
 	fight.pressed.connect(func():
 		_close_overlays()
 		if campaign_on:
@@ -327,8 +358,9 @@ func _build_teams_overlay() -> void:
 			new_match_requested.emit())
 	foot.add_child(fight)
 	_fight_btn = fight
-	var camp := _button("Start a campaign (5 rounds)")
+	var camp := _button("» Start a campaign (5 rounds)")
 	camp.custom_minimum_size = Vector2(0, 46)
+	_accent(camp)
 	camp.pressed.connect(func():
 		_close_overlays()
 		if campaign_on:
@@ -337,7 +369,7 @@ func _build_teams_overlay() -> void:
 			campaign_requested.emit())
 	foot.add_child(camp)
 	_campaign_btn = camp
-	var close2 := _button("Close")
+	var close2 := _button("« Close")
 	close2.custom_minimum_size = Vector2(96, 46)
 	close2.pressed.connect(func(): teams_overlay.visible = false)
 	foot.add_child(close2)
@@ -421,7 +453,7 @@ func _build_team_panel(t: int) -> Control:
 		crow.add_child(b)
 		_commander_chips[t][who] = b
 	var chelp := Label.new()
-	chelp.text = "The computer picks a personality for each round, answering what the other side fielded and whether it won."
+	chelp.text = "The computer picks a personality and a type for each round, answering what the other side fielded and whether it won."
 	chelp.add_theme_font_size_override("font_size", 12)
 	chelp.add_theme_color_override("font_color", Color(0.7, 0.7, 0.65))
 	chelp.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -657,7 +689,8 @@ func show_result(res: Dictionary) -> void:
 		shown += 1
 	var row := HFlowContainer.new()
 	results_box.add_child(row)
-	var again := _button("Next battle")
+	var again := _button("» Next battle")
+	_style(again, "go")
 	again.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
 	row.add_child(again)
 	var teams := _button("Companies")
@@ -728,10 +761,12 @@ func show_batch(summary: Dictionary) -> void:
 
 	var row := HFlowContainer.new()
 	results_box.add_child(row)
-	var again := _button("New battle")
+	var again := _button("» New battle")
+	_style(again, "go")
 	again.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
 	row.add_child(again)
-	var batch := _button("Sim ×%d again" % BATCH_N)
+	var batch := _button("» Sim ×%d again" % BATCH_N)
+	_style(batch, "go")
 	batch.pressed.connect(func(): _close_overlays(); batch_requested.emit(BATCH_N))
 	row.add_child(batch)
 	var teams := _button("Companies")
@@ -774,15 +809,16 @@ func _set_commander(t: int, who: String) -> void:
 	_apply_locks()
 
 
-## Types lock for a campaign; a computer-commanded side's personality is the computer's to set.
+## A computer-commanded side's type and personality are the computer's to set; everything
+## else stays open between rounds.
 func _apply_locks() -> void:
 	for t in 2:
+		var ai: bool = campaign_on and String(commanders[t]) == "computer"
 		for c in _type_controls[t]:
 			if c is Button:
-				c.disabled = campaign_on
+				c.disabled = ai
 			if c is HSlider:
-				c.editable = not campaign_on
-		var ai: bool = campaign_on and String(commanders[t]) == "computer"
+				c.editable = not ai
 		for c in _persona_controls[t]:
 			if c is Button:
 				c.disabled = ai
@@ -793,26 +829,30 @@ func _apply_locks() -> void:
 func campaign_started() -> void:
 	campaign_on = true
 	_apply_locks()
-	_top_campaign_btn.text = "Abandon campaign"
-	_head_campaign_btn.text = "Abandon campaign"
-	_fight_btn0.text = "Next round"
-	_top_fight_btn.text = "Next round"
+	_top_campaign_btn.text = "× Abandon campaign"
+	_head_campaign_btn.text = "× Abandon campaign"
+	_fight_btn0.text = "» Next round"
+	_top_fight_btn.text = "» Next round"
 	_batch_btn.visible = false
-	_fight_btn.text = "Next round with these personalities"
-	_campaign_btn.text = "Abandon campaign"
+	_fight_btn.text = "» Next round with these companies"
+	_campaign_btn.text = "× Abandon campaign"
+	for b in [_top_campaign_btn, _head_campaign_btn, _campaign_btn]:
+		_style(b, "stop")
 
 
 func campaign_ended() -> void:
 	campaign_on = false
 	round_label.visible = false
 	_apply_locks()
-	_top_campaign_btn.text = "Start a campaign"
-	_head_campaign_btn.text = "Start a campaign (5 rounds)"
-	_fight_btn0.text = "Fight one battle"
-	_top_fight_btn.text = "New battle"
+	_top_campaign_btn.text = "» Start a campaign"
+	_head_campaign_btn.text = "» Start a campaign (5 rounds)"
+	_fight_btn0.text = "» Fight one battle"
+	_top_fight_btn.text = "» New battle"
 	_batch_btn.visible = true
-	_fight_btn.text = "Fight with these companies"
-	_campaign_btn.text = "Start a campaign (5 rounds)"
+	_fight_btn.text = "» Fight with these companies"
+	_campaign_btn.text = "» Start a campaign (5 rounds)"
+	for b in [_top_campaign_btn, _head_campaign_btn, _campaign_btn]:
+		_accent(b)
 
 
 ## Between rounds (and at the end): what the round cost each side, the score so far, and
@@ -858,11 +898,13 @@ func show_round(sm: Dictionary) -> void:
 		else:
 			_stat_row(g3, "Recruits", [maxi(int(ts[0]) - int(ns[0]), 0), maxi(int(ts[1]) - int(ns[1]), 0)])
 		var picks: Array = sm.get("ai_picks", ["", ""])
+		var tpicks: Array = sm.get("ai_type_picks", ["", ""])
 		for t in 2:
 			if picks[t] != "":
-				_stat_row(g3, "%s (computer) will field" % MatchManager.TEAM_NAMES[t], [picks[t] if t == 0 else "", picks[t] if t == 1 else ""])
+				var what := "%s / %s" % [picks[t], tpicks[t]] if tpicks[t] != "" else String(picks[t])
+				_stat_row(g3, "%s (computer) will field" % MatchManager.TEAM_NAMES[t], [what if t == 0 else "", what if t == 1 else ""])
 		var nl := Label.new()
-		nl.text = "Types are locked. Personalities may be changed under Companies before the next round." if picks[0] == "" or picks[1] == "" else "Types are locked. Both sides are the computer's to command; watch how they answer each other."
+		nl.text = "Types and personalities may be changed under Companies before the next round." if picks[0] == "" or picks[1] == "" else "Both sides are the computer's to command; watch how they answer each other."
 		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nl.add_theme_font_size_override("font_size", 13)
 		nl.add_theme_color_override("font_color", Color(0.75, 0.75, 0.7))
@@ -885,20 +927,23 @@ func show_round(sm: Dictionary) -> void:
 	var row := HFlowContainer.new()
 	results_box.add_child(row)
 	if over:
-		var again := _button("New campaign")
+		var again := _button("» New campaign")
+		_accent(again)
 		again.pressed.connect(func(): _close_overlays(); campaign_requested.emit())
 		row.add_child(again)
-		var sim := _button("Back to simulation")
+		var sim := _button("« Back to simulation")
 		sim.pressed.connect(func(): _close_overlays(); new_match_requested.emit())
 		row.add_child(sim)
 	else:
-		var nxt := _button("Next round")
+		var nxt := _button("» Next round")
+		_style(nxt, "go")
 		nxt.pressed.connect(func(): _close_overlays(); next_round_requested.emit())
 		row.add_child(nxt)
-		var teams := _button("Companies (personalities)")
+		var teams := _button("Companies")
 		teams.pressed.connect(func(): _close_overlays(); teams_overlay.visible = true)
 		row.add_child(teams)
-		var quit := _button("Abandon campaign")
+		var quit := _button("× Abandon campaign")
+		_style(quit, "stop")
 		quit.pressed.connect(func(): _close_overlays(); campaign_abandoned.emit())
 		row.add_child(quit)
 	var pad := Control.new()

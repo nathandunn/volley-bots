@@ -96,11 +96,13 @@ zoom; *Fit view* puts the auto-fit back.
 
 **Simulation** — one battle, or *Sim ×10* for the numbers (the status line counts "Sim 3 of 10").
 
-**Campaign** — five rounds on five fields (Open Plain, Walled Farm, Woodland, Village, Sunken
-Road). A man who stands or runs survives to the next round with his name and his kills (`*n`
+**Campaign** — five rounds along a front of ten fields (Hedgerows, Churchyard, Sunken Road,
+Woodland, Open Plain, Walled Farm, Orchard, Village, Crossroads, Ridge). The fight opens on
+field 5; each round's winner pushes it one field into the loser's country. A man who stands or runs survives to the next round with his name and his kills (`*n`
 after his name is the rounds he has survived); the dead are gone. Rounds 1–4 are filled back to
 full strength with recruits; the last round is fought with the remainder only. Between rounds
-you may change personalities; **types lock when the campaign starts**. Most rounds won takes
+you may change personalities and types alike - or hand a side to the computer, which picks
+both for every round, answering what the enemy last fielded. Most rounds won takes
 the campaign (kills break a tie). If a side has nobody left the campaign ends there.
 
 ## Running it

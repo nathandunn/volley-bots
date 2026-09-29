@@ -26,6 +26,15 @@ var _pending_campaign_result: Dictionary = {}
 var campaign_field := Field.START_FIELD   # 1..10 along the front; the winner pushes it toward the loser
 var _last_fielded := ["", ""]    # the preset each side fought the last round with
 var _ai_picks := ["", ""]
+var _ai_type_picks := ["", ""]
+## the type that suits each personality, best first
+const TYPE_FOR := {
+	"Regulars": ["Even", "Ironside", "Marksman"],
+	"Skirmishers": ["Marksman", "Runner", "Even"],
+	"Shock": ["Grenadier", "Ironside", "Runner"],
+	"Militia": ["Runner", "Even", "Grenadier"],
+	"Veterans": ["Ironside", "Marksman", "Even"],
+}
 
 ## What the computer answers each preset with, first choice first. It counters the enemy's
 ## last personality; a win keeps the choice more often than not.
@@ -300,6 +309,7 @@ func _start_campaign() -> void:
 	campaign_field = Field.START_FIELD
 	_last_fielded = ["", ""]
 	_ai_picks = ["", ""]
+	_ai_type_picks = ["", ""]
 	hud.campaign_started()
 	# a computer commander opens with a pick of its own
 	for t in 2:
@@ -352,8 +362,14 @@ func _ai_pick(t: int, opening: bool) -> String:
 			pick = opts[0] if randf() < 0.65 else opts[1 + randi() % (opts.size() - 1)]
 	manager.team_personalities[t] = Personality.preset(pick)
 	manager.team_preset_names[t] = pick
+	# and a type to match: the natural fit most of the time, a second choice now and then
+	var topts: Array = TYPE_FOR.get(pick, ["Even"])
+	var tpick: String = topts[0] if randf() < 0.7 else topts[randi() % topts.size()]
+	manager.team_types[t] = SoldierType.preset(tpick)
+	manager.team_type_names[t] = tpick
 	hud._refresh_sliders(t)
 	_ai_picks[t] = pick
+	_ai_type_picks[t] = tpick
 	return pick
 
 
@@ -401,6 +417,7 @@ func _on_round_ended(result: Dictionary) -> void:
 		"fielded": [result["presets"][0], result["presets"][1]]})
 	_last_fielded = [result["presets"][0], result["presets"][1]]
 	_ai_picks = ["", ""]
+	_ai_type_picks = ["", ""]
 	for t in 2:
 		if hud.commanders[t] == "computer":
 			_ai_pick(t, false)
@@ -410,7 +427,8 @@ func _on_round_ended(result: Dictionary) -> void:
 		"next_field": next_layout, "next_field_no": campaign_field, "wins": campaign_wins.duplicate(),
 		"kills": campaign_kills.duplicate(), "history": campaign_rounds.duplicate(true), "counts": counts,
 		"next_sizes": [survivors[0].size(), survivors[1].size()], "last_next": campaign_round + 1 >= CAMPAIGN_ROUNDS,
-		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result, "ai_picks": _ai_picks.duplicate()}
+		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result, "ai_picks": _ai_picks.duplicate(),
+		"ai_type_picks": _ai_type_picks.duplicate()}
 	if not over:
 		# the next battlefield goes up now, so it can be surveyed before personalities are chosen
 		_rebuild_field(next_layout)
@@ -429,7 +447,7 @@ func _on_round_ended(result: Dictionary) -> void:
 	if DisplayServer.get_name() == "headless":
 		print("round %d on %s: %s v %s -> %s (%s) stood %d/%d ran %d/%d fell %d/%d -> next %s, computer picks %s" % [campaign_round, layout,
 			result["presets"][0], result["presets"][1], result["winner_name"], result["reason"],
-			counts[0]["stood"], counts[1]["stood"], counts[0]["ran"], counts[1]["ran"], counts[0]["fell"], counts[1]["fell"], str(summary["next_sizes"]), str(_ai_picks)])
+			counts[0]["stood"], counts[1]["stood"], counts[0]["ran"], counts[1]["ran"], counts[0]["fell"], counts[1]["fell"], str(summary["next_sizes"]), str(_ai_picks) + " " + str(_ai_type_picks)])
 		get_tree().create_timer(2.5).timeout.connect(func():
 			print("round panel: %s, %d rows" % [hud.results_title.text, hud.results_box.get_child_count()])
 			if over:
