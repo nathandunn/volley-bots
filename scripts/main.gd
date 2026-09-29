@@ -36,16 +36,23 @@ const TYPE_FOR := {
 	"Veterans": ["Ironside", "Marksman", "Even"],
 }
 
-## What the computer answers each preset with, first choice first. It counters the enemy's
-## last personality; a win keeps the choice more often than not.
-const COUNTERS := {
-	"Regulars": ["Skirmishers", "Veterans", "Shock"],
-	"Skirmishers": ["Shock", "Regulars", "Veterans"],
-	"Shock": ["Regulars", "Veterans", "Skirmishers"],
-	"Militia": ["Shock", "Regulars", "Skirmishers"],
-	"Veterans": ["Skirmishers", "Shock", "Regulars"],
-	"Balanced": ["Shock", "Skirmishers", "Regulars"],
-}
+## The computer's doctrines: a personality and a type that go together. Each is scored
+## against what the enemy last fielded (its traits, not its name - a home-made company is
+## read the same way), the ground, and how the doctrine has fared in this campaign; the
+## best is fielded most often, the runners-up now and then, so there is never one answer.
+const DOCTRINES := [
+	{"name": "The line", "p": "Regulars", "t": "Even"},
+	{"name": "Line of marksmen", "p": "Regulars", "t": "Marksman"},
+	{"name": "Skirmish screen", "p": "Skirmishers", "t": "Marksman"},
+	{"name": "Light company", "p": "Skirmishers", "t": "Runner"},
+	{"name": "Storming party", "p": "Shock", "t": "Grenadier"},
+	{"name": "The rush", "p": "Shock", "t": "Runner"},
+	{"name": "Old guard", "p": "Veterans", "t": "Ironside"},
+	{"name": "Veteran marksmen", "p": "Veterans", "t": "Marksman"},
+	{"name": "The swarm", "p": "Militia", "t": "Runner"},
+]
+var _doctrine_record := [{}, {}]   # per side: doctrine name -> [wins, losses] this campaign
+var _last_doctrine := ["", ""]
 
 
 func _ready() -> void:
@@ -61,6 +68,8 @@ func _ready() -> void:
 	var args := _parse_args(OS.get_cmdline_user_args())
 	headless = (DisplayServer.get_name() == "headless" or args.has("sim")) and not args.has("ui")
 	manager.headless = headless
+	if args.has("field") and Field.LAYOUTS.has(args["field"]):
+		_rebuild_field(args["field"])
 	if args.has("size"):
 		var n := clampi(int(args["size"]), 1, MatchManager.MAX_SIZE)
 		manager.team_sizes = [n, n]
@@ -73,6 +82,13 @@ func _ready() -> void:
 		if args.has(key):
 			manager.team_personalities[t] = Personality.preset(args[key])
 			manager.team_preset_names[t] = String(args[key])
+		if args.has(key + "traits"):
+			# --redtraits=aggression:0.1,cover:1 - overrides on top of the preset
+			for kv in String(args[key + "traits"]).split(","):
+				var pair := kv.split(":")
+				if pair.size() == 2:
+					manager.team_personalities[t].set_trait(pair[0], float(pair[1]))
+			manager.team_preset_names[t] = manager.team_personalities[t].label()
 		if args.has(key + "type"):
 			manager.team_types[t] = SoldierType.preset(args[key + "type"])
 			manager.team_type_names[t] = String(args[key + "type"])
@@ -89,6 +105,8 @@ func _ready() -> void:
 		_start_next()
 		return
 
+	if manager.time_limit <= 0.0:
+		manager.time_limit = 420.0   # nothing runs forever on a screen either
 	_setup_ui_scale()
 	cam = CameraRig.new()
 	add_child(cam)
@@ -313,6 +331,8 @@ func _start_campaign() -> void:
 	_last_fielded = ["", ""]
 	_ai_picks = ["", ""]
 	_ai_type_picks = ["", ""]
+	_doctrine_record = [{}, {}]
+	_last_doctrine = ["", ""]
 	hud.campaign_started()
 	# a computer commander opens with a pick of its own
 	for t in 2:
@@ -352,28 +372,65 @@ func _next_round() -> void:
 ## round. Opening round: any of the five. After that: answer what the enemy fielded, unless
 ## the last round was won, in which case keep the winning choice 70 % of the time.
 func _ai_pick(t: int, opening: bool) -> String:
-	var names := ["Regulars", "Skirmishers", "Shock", "Militia", "Veterans"]
-	var pick := ""
-	if opening or _last_fielded[1 - t] == "":
-		pick = names[randi() % names.size()]
-	else:
-		var last_win: bool = not campaign_rounds.is_empty() and int(campaign_rounds[-1]["winner"]) == t
-		if last_win and randf() < 0.7 and _last_fielded[t] != "":
-			pick = _last_fielded[t]
+	var e: Personality = manager.team_personalities[1 - t]
+	var e_aggr := e.get_trait("aggression")
+	var e_cover := e.get_trait("cover")
+	var e_nerve := e.get_trait("nerve")
+	var e_disc := e.get_trait("discipline")
+	var e_coh := e.get_trait("cohesion")
+	var layout: String = field.layout_name if field != null else "Walled Farm"
+	var pieces: int = (Field.LAYOUTS.get(layout, []) as Array).size()
+	var open_ground: bool = pieces <= 4
+	var thick_ground: bool = pieces >= 10
+	var scored := []
+	for d in DOCTRINES:
+		var sc := 0.0
+		if opening:
+			sc = randf() * 2.0   # nothing known yet: any doctrine, with a slight lean to the ground
 		else:
-			var opts: Array = COUNTERS.get(_last_fielded[1 - t], names)
-			# first choice most of the time, a surprise now and then
-			pick = opts[0] if randf() < 0.65 else opts[1 + randi() % (opts.size() - 1)]
+			var dp: String = d["p"]
+			var storm: bool = dp == "Shock"
+			var line: bool = dp == "Regulars" or dp == "Veterans"
+			var skirm: bool = dp == "Skirmishers"
+			# men behind walls who will not come out: go and get them, or out-shoot them from walls of your own
+			if e_cover > 0.6 and e_aggr < 0.45:
+				sc += 2.5 if storm else (1.0 if skirm else -2.0)
+			# men coming on with the bayonet: stand, volley, and let them come
+			if e_aggr > 0.7:
+				sc += 2.0 if line else (-1.5 if skirm else -0.5)
+			# shaky men break under volleys, and under a charge
+			if e_nerve < 0.4:
+				sc += 1.5 if line else (1.0 if storm else 0.0)
+			# a loose, undisciplined enemy is meat for a charge
+			if e_disc < 0.4 or e_coh < 0.3:
+				sc += 1.0 if storm else 0.0
+			# a steady, patient line is best worried from cover, not charged
+			if e_disc > 0.7 and e_aggr < 0.6 and e_cover < 0.5:
+				sc += 1.5 if skirm else (-1.0 if storm else 0.0)
+		# the ground
+		if open_ground:
+			sc += 1.0 if d["p"] != "Skirmishers" else -1.5
+		if thick_ground:
+			sc += 1.0 if d["p"] == "Skirmishers" else (-1.0 if d["p"] == "Shock" else 0.0)
+		# what this campaign has taught
+		var rec: Array = _doctrine_record[t].get(d["name"], [0, 0])
+		sc += 1.5 * rec[0] - 2.0 * rec[1]
+		sc += randf() * 0.6
+		scored.append([sc, d])
+	scored.sort_custom(func(a, b): return a[0] > b[0])
+	# the best most of the time; the second and third often enough to be a real choice
+	var r := randf()
+	var d: Dictionary = scored[0][1] if r < 0.6 else (scored[1][1] if r < 0.88 else scored[2][1])
+	var pick: String = d["p"]
+	var tpick: String = d["t"]
 	manager.team_personalities[t] = Personality.preset(pick)
 	manager.team_preset_names[t] = pick
-	# and a type to match: the natural fit most of the time, a second choice now and then
-	var topts: Array = TYPE_FOR.get(pick, ["Even"])
-	var tpick: String = topts[0] if randf() < 0.7 else topts[randi() % topts.size()]
 	manager.team_types[t] = SoldierType.preset(tpick)
 	manager.team_type_names[t] = tpick
 	hud._refresh_sliders(t)
 	_ai_picks[t] = pick
 	_ai_type_picks[t] = tpick
+	_last_doctrine[t] = d["name"]
 	return pick
 
 
@@ -420,6 +477,14 @@ func _on_round_ended(result: Dictionary) -> void:
 		"reason": result["reason"], "duration": result["duration"], "counts": counts,
 		"fielded": [result["presets"][0], result["presets"][1]]})
 	_last_fielded = [result["presets"][0], result["presets"][1]]
+	for t in 2:
+		if _last_doctrine[t] != "":
+			var rec: Array = _doctrine_record[t].get(_last_doctrine[t], [0, 0])
+			if w == t:
+				rec[0] += 1
+			elif w == 1 - t:
+				rec[1] += 1
+			_doctrine_record[t][_last_doctrine[t]] = rec
 	_ai_picks = ["", ""]
 	_ai_type_picks = ["", ""]
 	for t in 2:
@@ -432,7 +497,7 @@ func _on_round_ended(result: Dictionary) -> void:
 		"kills": campaign_kills.duplicate(), "history": campaign_rounds.duplicate(true), "counts": counts,
 		"next_sizes": [survivors[0].size(), survivors[1].size()], "last_next": campaign_round + 1 >= CAMPAIGN_ROUNDS,
 		"team_sizes": manager.team_sizes.duplicate(), "over": over, "result": result, "ai_picks": _ai_picks.duplicate(),
-		"ai_type_picks": _ai_type_picks.duplicate()}
+		"ai_type_picks": _ai_type_picks.duplicate(), "ai_doctrines": _last_doctrine.duplicate()}
 	if not over:
 		# the next battlefield goes up now, so it can be surveyed before personalities are chosen
 		_rebuild_field(next_layout)

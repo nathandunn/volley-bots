@@ -70,6 +70,8 @@ var kneeling := false
 var in_melee := false
 var charging := false
 var kiting := 0.0             # fire-and-fall-back timer
+var breath := 0.0             # seconds until a man who has just run can hold a rifle steady
+var alone := 0.0              # 0 with mates at his elbow, 1 with nobody within ten metres
 var _halt := 0.0              # stand still: the moment of firing and the first of the reload
 var at_will := false          # this man has decided to fire without the sergeant
 
@@ -194,8 +196,10 @@ func _tick_timers(delta: float) -> void:
 	_halt = maxf(_halt - delta, 0.0)
 	_cover_hold = maxf(_cover_hold - delta, 0.0)
 	fear = maxf(fear - delta * 0.04, 0.0)
+	breath = maxf(breath - delta, 0.0)
 	if running and velocity.length() > 0.5:
 		stamina = maxf(stamina - RUN_DRAIN * delta, 0.0)
+		breath = 4.0
 	elif velocity.length() > 0.2:
 		stamina = maxf(stamina - WALK_DRAIN * delta, 0.0)
 	else:
@@ -204,7 +208,8 @@ func _tick_timers(delta: float) -> void:
 	var losses: float = manager.loss_fraction(team)
 	var hurt := 1.0 - hp / MAX_HP
 	var outnumbered: float = clampf(1.0 - manager.strength_ratio(team), 0.0, 1.0)
-	courage = p("nerve") * 1.15 - losses * 0.75 - hurt * 0.3 - fear * 0.35 - outnumbered * 0.25 + 0.05
+	# ... and a man with nobody at his elbow feels every bit of it: loose order has its price
+	courage = p("nerve") * 1.15 - losses * 0.75 - hurt * 0.3 - fear * 0.35 - outnumbered * 0.25 - alone * 0.2 + 0.05
 	if not is_routed and courage < 0.1 and manager.elapsed > 3.0:
 		_rout()
 
@@ -224,6 +229,13 @@ func _decide() -> void:
 	if enemy != null:
 		enemy_d = global_position.distance_to(enemy.global_position)
 	target = enemy
+	var mates := 0
+	for f in manager.fighting(team):
+		if f != self and f.global_position.distance_to(global_position) < 6.0:
+			mates += 1
+			if mates >= 2:
+				break
+	alone = 1.0 if mates == 0 else (0.4 if mates == 1 else 0.0)
 	want_run = false
 	kneeling = false
 	in_melee = enemy != null and enemy_d < STEEL_RANGE
@@ -264,11 +276,20 @@ func _decide() -> void:
 		face_point = enemy.global_position
 		want_run = not tired()
 		# keep the charge together: a man out ahead of his mates by more than a few metres waits for them
-		if p("discipline") > 0.3 and manager.ahead_of_line(self) > 3.0 and enemy_d > 6.0:
+		if p("discipline") > 0.3 and manager.ahead_of_line(self) > 6.0 and enemy_d > 8.0:
 			want_run = false
 		# a loaded man charging fires it off at point blank
 		if loaded and enemy_d < POINT_BLANK and enemy_d >= STEEL_RANGE and _can_fire_at(enemy):
 			_fire(enemy)
+		return
+
+	# the bayonet is coming: a man who would rather not be on the end of it gives ground before
+	# it arrives - one shot if he has it, then ten metres back. Skirmishers do not stand a charge.
+	if enemy != null and enemy.charging and enemy_d < 24.0 and p("aggression") < 0.4 and p("discipline") < 0.6 and p("nerve") < 0.7 \
+		and not charging and kiting <= 0.0:
+		if loaded and _can_fire_at(enemy) and velocity.length() < 0.5:
+			_fire(enemy)
+		kiting = 5.0
 		return
 
 	# firing
@@ -349,6 +370,8 @@ func _slot_position(order: Dictionary, line_z: float) -> Vector3:
 ## A cover spot near the slot, if this man values cover more than his place in the line.
 func _pick_cover(slot_pos: Vector3, enemy: Soldier) -> Dictionary:
 	var want := p("cover") - 0.35 * p("discipline")
+	if manager.orders[team].get("seek_cover", false):
+		want = maxf(want, 0.5)   # the sergeant has seen the exchange; any wall will do
 	if want < 0.2:
 		return {}
 	if not _cover_spot.is_empty() and _cover_hold > 0.0:
@@ -393,12 +416,14 @@ func _fire(enemy: Soldier) -> void:
 	var cover_f := field.line_of_fire(from, to)
 	if enemy.kneeling and cover_f < 1.0:
 		cover_f *= 0.8
+	if cover_f < 1.0 and d < 15.0:
+		cover_f = lerpf(cover_f, 1.0, (15.0 - d) / 15.0 * 0.6)   # at a few paces a wall hides less; the ball comes over it
 	var tv := enemy.velocity.length()
 	var move_f := 1.0 if tv < 0.5 else (0.85 if tv < 2.5 else 0.75)   # a walking target costs a little, a running one a bit more
 	var mv := velocity.length()
 	if mv > 0.5:
 		move_f *= 0.5 if mv < 2.5 else 0.3   # firing on the move costs a lot; at the run, most of it
-	var fatigue_f := 0.75 if tired() else 1.0
+	var fatigue_f := 0.75 if tired() else (0.6 if breath > 0.0 else 1.0)   # winded from a run, or worn out
 	var wound_f := 0.8 if wounded else 1.0
 	var p_hit := BASE_HIT * hit_mult * range_f * cover_f * move_f * fatigue_f * wound_f
 	# a friend in the way of a careless shot
@@ -437,6 +462,8 @@ func _try_thrust(enemy: Soldier) -> void:
 		p_hit *= 1.3   # the weight of the charge behind the first thrust
 	if not enemy.loaded and enemy.action != "melee" and enemy.action != "charge":
 		p_hit *= 1.25  # caught with the ramrod in the barrel
+	if enemy.kneeling:
+		p_hit *= 1.2   # a man on his knee behind a wall has no room to parry
 	if enemy.is_routed or enemy.action == "rout":
 		p_hit *= 1.5
 	if tired():

@@ -42,6 +42,9 @@ var _spot_claims := {}   # "x,z" -> soldier
 var _last_volley_t := [-100.0, -100.0]
 var _volley_ids := [0, 0]
 var _charge_since := [-1.0, -1.0]
+var _exch := [[0.0, 0.0], [0.0, 0.0]]   # hits given, hits taken - lately (decays)
+var _last_harm_t := 0.0                # when anyone last hit anyone
+var _press_since := [-1.0, -1.0]
 var _fallback_since := [-1.0, -1.0]
 var _alive_cache: Array[Soldier] = []
 var _cache_frame := -1
@@ -108,7 +111,7 @@ func start_match(seed_value: int = -1) -> void:
 
 func _blank_order(t: int, n: int) -> Dictionary:
 	return {"mode": "advance", "line_z": home_z(t), "rally_z": home_z(t), "center_x": 0.0, "spacing": 1.0,
-		"count": n, "volley_id": 0, "volley_age": 999.0, "alone": false, "sergeant": ""}
+		"count": n, "volley_id": 0, "volley_age": 999.0, "alone": false, "sergeant": "", "press": false, "seek_cover": false}
 
 
 func clear() -> void:
@@ -122,6 +125,9 @@ func clear() -> void:
 	_last_volley_t = [-100.0, -100.0]
 	_charge_since = [-1.0, -1.0]
 	_fallback_since = [-1.0, -1.0]
+	_exch = [[0.0, 0.0], [0.0, 0.0]]
+	_last_harm_t = 0.0
+	_press_since = [-1.0, -1.0]
 	running = false
 	_cache_frame = -1
 
@@ -308,6 +314,9 @@ func _physics_process(delta: float) -> void:
 		end_match("Blue broken")
 	elif time_limit > 0.0 and elapsed >= time_limit:
 		end_match("time")
+	elif elapsed > 120.0 and elapsed - _last_harm_t > 45.0:
+		# nobody has hurt anybody for over a minute: the day is decided on harm done
+		end_match("stalemate")
 
 
 ## The line's mind. Traits are the sergeant's own blended half-and-half with his men's mean,
@@ -379,6 +388,23 @@ func _run_sergeant(t: int) -> void:
 	mean_courage /= men.size()
 	var losses := loss_fraction(t)
 
+	# --- the exchange: a sergeant can count. Taking two balls for every one he gives while
+	# the enemy sits behind walls is a firefight lost, and standing in it is not a plan.
+	_exch[t][0] *= 0.98
+	_exch[t][1] *= 0.98
+	var given: float = _exch[t][0]
+	var taken: float = _exch[t][1]
+	var losing_fire: bool = not enemies.is_empty() and taken >= 2.0 * given + 2.0 and nearest_d < engage + 15.0
+	# ... and if nobody has hurt anybody for a while, somebody has to go and find the enemy
+	var stalled: bool = not enemies.is_empty() and elapsed > 30.0 and elapsed - _last_harm_t > 25.0 and nearest_d > 22.0
+	var pressing: bool = _press_since[t] >= 0.0
+	if pressing and (nearest_d < 22.0 or enemies.is_empty()):
+		_press_since[t] = -1.0
+		pressing = false
+	if stalled and not pressing and mix["aggression"] >= 0.15:
+		_press_since[t] = elapsed
+		pressing = true
+
 	# --- mode
 	var mode: String = order["mode"]
 	if mode == "charge":
@@ -402,17 +428,34 @@ func _run_sergeant(t: int) -> void:
 			var charge_range: float = 12.0 + 32.0 * float(mix["aggression"])
 			var just_volleyed: bool = elapsed - float(_last_volley_t[t]) < 4.0
 			var ratio := strength_ratio(t)
-			if not enemies.is_empty() and nearest_d < charge_range and mix["aggression"] > 0.35 \
-				and (just_volleyed or loaded_frac < 0.35 or mix["aggression"] > 0.85) \
-				and ratio > 0.5 + (1.0 - mix["aggression"]) * 0.6:
+			if losing_fire:
+				# the bayonet decides what the rifle cannot: a sergeant with any blood in him
+				# closes, and a shy one either finds a wall of his own or gets out of range
+				charge_range += 20.0
+			if not enemies.is_empty() and nearest_d < charge_range and mix["aggression"] > (0.2 if losing_fire else 0.35) \
+				and (just_volleyed or loaded_frac < 0.35 or mix["aggression"] > 0.85 or losing_fire) \
+				and ratio > (0.4 if losing_fire else 0.5 + (1.0 - mix["aggression"]) * 0.6):
 				mode = "charge"
 				_charge_since[t] = elapsed
+				_press_since[t] = -1.0
 				stats["charges"][t] += 1
-			elif not enemies.is_empty() and nearest_d <= engage:
+			elif losing_fire and mix["aggression"] <= 0.2 and mix["cover"] < 0.5:
+				mode = "fallback"
+				order["rally_z"] = clampf(centre.z - toward * 25.0, -Field.HALF_Z + 4.0, Field.HALF_Z - 4.0)
+				_fallback_since[t] = elapsed
+				stats["fallbacks"][t] += 1
+			elif losing_fire and mix["aggression"] > 0.2:
+				mode = "advance"
+				if not pressing:
+					_press_since[t] = elapsed
+					pressing = true
+			elif not enemies.is_empty() and nearest_d <= engage and not pressing:
 				mode = "hold"
 			else:
 				mode = "advance"
 	order["mode"] = mode
+	order["press"] = pressing and mode == "advance"
+	order["seek_cover"] = losing_fire
 	if mode == "charge":
 		# a line coming on with the bayonet is a fearful thing before it ever arrives
 		for e in enemies:
@@ -421,7 +464,10 @@ func _run_sergeant(t: int) -> void:
 				if m.charging and m.global_position.distance_to(e.global_position) < 15.0:
 					close += 1
 			if close >= 3:
-				e.fear = minf(e.fear + 0.03 * (1.0 - 0.5 * e.p("nerve")), 0.6)
+				# ... and loose order cannot receive one: a man with nobody at his elbow
+				# feels three bayonets as thirty
+				var loose: float = 1.0 + 2.5 * e.alone
+				e.fear = minf(e.fear + 0.03 * (1.0 - 0.5 * e.p("nerve")) * loose, 0.6 + 0.35 * e.alone)
 
 	# --- where the line stands
 	match mode:
@@ -429,14 +475,15 @@ func _run_sergeant(t: int) -> void:
 			var step: float = 1.4 * SERGEANT_TICK * (0.6 + 0.8 * float(mix["aggression"]))
 			var target_z: float = order["line_z"] + toward * step
 			# a cover-minded sergeant halts the line on a wall he can reach before the enemy does
-			if mix["cover"] > 0.45:
+			# - unless the line is pressing in, when walls are for after the volley at twenty paces
+			if mix["cover"] > 0.45 and not pressing:
 				var wall_z := _cover_row_ahead(t, order["line_z"], engage, enemy_centre)
 				if not is_nan(wall_z) and (target_z - wall_z) * toward > 0.0:
 					target_z = wall_z
 			order["line_z"] = clampf(target_z, -Field.HALF_Z + 3.0, Field.HALF_Z - 3.0)
 		"hold":
 			# keep the range: if the enemy pulls back out of reach, follow at the walk
-			if not enemies.is_empty() and nearest_d > engage + 8.0:
+			if not enemies.is_empty() and (nearest_d > engage + 8.0 or pressing):
 				order["line_z"] += toward * 1.0 * SERGEANT_TICK
 			# ... and a hot-blooded sergeant still edges in
 			elif mix["aggression"] > 0.6 and nearest_d > 20.0:
@@ -513,6 +560,9 @@ func _on_fired(s: Soldier, victim: Soldier, hit: bool) -> void:
 	stats["shots"][s.team] += 1
 	if hit and victim.team != s.team:
 		stats["hits"][s.team] += 1
+		_exch[s.team][0] += 1.0
+		_exch[victim.team][1] += 1.0
+		_last_harm_t = elapsed
 	elif hit:
 		stats["friendly"][s.team] += 1
 
@@ -558,11 +608,22 @@ func end_match(reason: String) -> void:
 		winner = 0
 	elif f[1] > 0 and f[0] == 0:
 		winner = 1
-	elif reason == "time":
-		# on the clock, the side that has done more harm
+	elif reason == "time" or reason == "stalemate":
+		# on the clock, the ground decides: the side whose line stands further into the
+		# enemy's country holds the field. A company that only ever gives ground has lost it.
+		# Harm done breaks a tie.
+		var g := [0.0, 0.0]
+		for t in 2:
+			var men := fighting(t)
+			for m in men:
+				g[t] += m.global_position.z * signf(-home_z(t))   # metres past the centre line, toward the enemy
+			g[t] = g[t] / maxf(float(men.size()), 1.0)
 		var s0: int = stats["kills"][0][0] + stats["kills"][0][1]
 		var s1: int = stats["kills"][1][0] + stats["kills"][1][1]
-		if s0 != s1:
+		if absf(g[0] - g[1]) > 4.0:
+			winner = 0 if g[0] > g[1] else 1
+			reason += ", " + ("Red" if winner == 0 else "Blue") + " holds the ground"
+		elif s0 != s1:
 			winner = 0 if s0 > s1 else 1
 	var per := []
 	for s in soldiers:

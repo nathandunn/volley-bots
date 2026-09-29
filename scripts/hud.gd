@@ -280,6 +280,7 @@ func _overlay(title_text: String) -> Array:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.scroll_deadzone = 28   # a thumb dragging the page scrolls it; a slider only moves on a deliberate touch
 	vb.add_child(scroll)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -916,9 +917,12 @@ func show_round(sm: Dictionary) -> void:
 			_stat_row(g3, "Recruits", [maxi(int(ts[0]) - int(ns[0]), 0), maxi(int(ts[1]) - int(ns[1]), 0)])
 		var picks: Array = sm.get("ai_picks", ["", ""])
 		var tpicks: Array = sm.get("ai_type_picks", ["", ""])
+		var docs: Array = sm.get("ai_doctrines", ["", ""])
 		for t in 2:
 			if picks[t] != "":
 				var what := "%s / %s" % [picks[t], tpicks[t]] if tpicks[t] != "" else String(picks[t])
+				if docs[t] != "":
+					what = "%s: %s" % [docs[t], what]
 				_stat_row(g3, "%s (computer) will field" % MatchManager.TEAM_NAMES[t], [what if t == 0 else "", what if t == 1 else ""])
 		var nl := Label.new()
 		nl.text = "Types and personalities may be changed under Edit Company before the next round." if picks[0] == "" or picks[1] == "" else "Both sides are the computer's to command; watch how they answer each other."

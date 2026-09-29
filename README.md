@@ -71,7 +71,20 @@ Each man then decides, every 0.2 s, how much of that to follow:
   man's own courage is his nerve less losses, wounds, nearby deaths and being outnumbered;
   below 0.1 he runs for the rear, and off the field if nothing steadies him.
 
-The fight ends when one side has nobody left standing in the line.
+- **The sergeant can count** — taking two balls for every one he gives while the enemy sits
+  behind walls is a firefight lost: a sergeant with any blood in him closes with the bayonet
+  (the charge range opens by 20 m), a shy one finds walls of his own or pulls out of range.
+  If nobody has hurt anybody for 25 s, a sergeant with any aggression **presses** to twenty
+  paces, walls or no walls.
+- **Skirmishers do not stand a charge** — a man with low aggression and discipline, and less
+  than iron nerve, fires once and gives ten metres before the bayonet arrives. Loose order
+  cannot receive a charge: a man with nobody at his elbow feels three bayonets as thirty.
+  A man who has just run cannot hold a rifle steady for four seconds.
+
+The fight ends when one side has nobody left standing in the line. If nobody has hurt anybody
+for 45 s (after two minutes), or the clock runs out (seven minutes), **the ground decides**: the
+side whose line stands further into the enemy's country holds the field; harm done breaks a
+tie. A company that only ever gives ground has lost it.
 
 ## The rifle
 
@@ -101,8 +114,13 @@ Woodland, Open Plain, Walled Farm, Orchard, Village, Crossroads, Ridge). The fig
 field 5; each round's winner pushes it one field into the loser's country. A man who stands or runs survives to the next round with his name and his kills (`*n`
 after his name is the rounds he has survived); the dead are gone. Rounds 1–4 are filled back to
 full strength with recruits; the last round is fought with the remainder only. Between rounds
-you may change personalities and types alike - or hand a side to the computer, which picks
-both for every round, answering what the enemy last fielded. Most rounds won takes
+you may change personalities and types alike - or hand a side to the computer. The computer
+fights by **doctrine** (the line, a skirmish screen, a storming party, the old guard, the
+swarm…, nine in all, each a personality and a type), scoring each against the traits the
+enemy last fielded - not the preset name, so a home-made company is read the same way - the
+ground (open or thick with cover), and how that doctrine has fared this campaign; the best is
+fielded 60 % of the time, the second and third the rest, so there is never one answer. Most
+rounds won takes
 the campaign (kills break a tie). If a side has nobody left the campaign ends there.
 
 ## Running it
@@ -110,7 +128,9 @@ the campaign (kills break a tie). If a side has nobody left the campaign ends th
 - Browser: `?size=N` (1–20, asked on first load), `?red=Shock&blue=Regulars`,
   `?redtype=Marksman&bluetype=Grenadier`.
 - Headless batch: `godot --headless --path . -- --sim=20 --red=Regulars --blue=Skirmishers
-  --seed=1 --cap=400` prints a battle a line and a `SUMMARY {...}` JSON.
+  --seed=1 --cap=400` prints a battle a line and a `SUMMARY {...}` JSON. `--redtraits=
+  aggression:0.1,cover:1` overrides traits on top of a preset; `--field="Open Plain"` picks
+  the ground.
 - Headless through the HUD (checks the panels build): `-- --ui --batch=3` or `-- --ui --campaign`.
 - Build: `./build.sh` (Godot 4.7.2 + web templates) writes `dist/`, boots the pack headless
   to prove it, gzips the big three. `Dockerfile` + `nginx.conf` + `headers.caddy` are the
@@ -127,5 +147,11 @@ the campaign (kills break a tie). If a side has nobody left the campaign ends th
 | Regulars/Marksman | Regulars/Grenadier | 4–0 in a firefight, as it should be |
 | Shock/Grenadier | Shock/Runner | 4–0 in a melee, as it should be |
 
-Battles run 35–120 s at 20 a side. Not yet calibrated; the levers are the constants at the
-top of `soldier.gd` and the sergeant in `match_manager.gd`.
+Battles run 35–120 s at 20 a side. The levers are the constants at the top of `soldier.gd`
+and the sergeant in `match_manager.gd`.
+
+Known strong build: skirmishers with cover 1, nerve 1, cohesion 0 and the Marksman type, on
+a field with walls. Twenty riflemen behind stone who never break beat everything sent at
+them head-on except a mirror of themselves; on the Open Plain a storming party takes them
+about two times in three. Personality traits carry no budget (the type does), so nerve 1
+costs nothing - that is the exploit, and a trait budget is the honest fix if it is wanted.
